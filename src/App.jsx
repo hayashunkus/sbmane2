@@ -326,9 +326,9 @@ export default function App() {
                       {/* Ticket-like view */}
                       <div className="flex items-center justify-between text-blue-900 mb-4">
                         <div className="text-center">
-                          <p className="text-[10px] text-blue-400 font-bold mb-1">NOW</p>
-                          {/* ★ここで計算時の時刻を表示 */}
-                          <p className="text-xl font-bold leading-none">{optimizationResult.currentTime}</p>
+                          <p className="text-[16px] text-blue-400 font-bold mb-1">NOW</p>
+                          {/* ★ここで計算時の時刻を表示
+                          <p className="text-xl font-bold leading-none">{optimizationResult.currentTime}</p> */}
                         </div>
                         <div className="flex-1 px-4 flex flex-col items-center">
                           <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full text-white mb-1 shadow-sm ${optimizationResult.remainingMinutes > 30 ? 'bg-green-500' : optimizationResult.remainingMinutes > 15 ? 'bg-yellow-500' : 'bg-red-500'}`}>
