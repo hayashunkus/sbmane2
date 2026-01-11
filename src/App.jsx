@@ -159,43 +159,77 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('home');
   const [showBeaconDemo, setShowBeaconDemo] = useState(false);
   const [currentFloor, setCurrentFloor] = useState('1F');
+
   // 新機能: スケジュール最適化用のステート
   const [targetTime, setTargetTime] = useState('');
   const [targetStation, setTargetStation] = useState('');
   const [optimizationResult, setOptimizationResult] = useState(null);
 
-  // スケジュール最適化計算（デモ用ロジック）
-  const calculateOptimizedPlan = () => {
-    if (!targetTime) return;
+  // 現在時刻の管理 (リアルタイム更新)
+  const [now, setNow] = useState(new Date());
 
-    // 現在時刻を14:35と仮定
-    const currentTimeStr = "14:35";
+  useEffect(() => {
+    // 1秒ごとに時刻を更新
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-    // 入力された時間をパース
-    const [targetHour, targetMin] = targetTime.split(':').map(Number);
-
-    // 改札までの移動時間を15分と仮定し、リミット時間を算出
-    let limitHour = targetHour;
-    let limitMin = targetMin - 15;
-    if (limitMin < 0) {
-      limitMin += 60;
-      limitHour -= 1;
-    }
-    const limitTimeStr = `${String(limitHour).padStart(2, '0')}:${String(limitMin).padStart(2, '0')}`;
-
-    // 結果をセット
-    setOptimizationResult({
-      limitTime: limitTimeStr,
-      station: targetStation || '目的地',
-      departureTime: targetTime,
-      remainingMinutes: 45, // デモ用に「あと45分」と仮定
-      recommendation: "45分あれば、高島屋のデパ地下でお土産選びが最適です！"
-    });
+  // 時刻フォーマット関数 (HH:mm)
+  const formatTime = (date) => {
+    return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
   };
 
   // 擬似的なビーコン検知デモ
   const triggerBeaconDemo = () => {
     setShowBeaconDemo(true);
+  };
+
+  // スケジュール最適化計算（現在時刻と連動）
+  const calculateOptimizedPlan = () => {
+    if (!targetTime) return;
+
+    // 入力されたターゲット時間をDateオブジェクトに変換（日付は今日とする）
+    const [targetHour, targetMin] = targetTime.split(':').map(Number);
+    const targetDate = new Date(now);
+    targetDate.setHours(targetHour, targetMin, 0);
+
+    // もしターゲット時刻が現在より過去の場合、翌日として扱うなどの処理も可能だが
+    // ここでは簡易的に当日として計算（マイナスになる場合は考慮）
+
+    // リミット時間の計算（移動15分前）
+    const limitDate = new Date(targetDate);
+    limitDate.setMinutes(limitDate.getMinutes() - 15);
+
+    // 残り時間（分）の計算
+    const diffMs = limitDate - now;
+    const remainingMinutes = Math.floor(diffMs / 60000);
+
+    let recommendationText = "";
+    if (remainingMinutes < 0) {
+      recommendationText = "急いでください！改札への移動時間を考慮すると出発時刻ギリギリです。";
+    } else if (remainingMinutes < 30) {
+      recommendationText = `あと${remainingMinutes}分です。ホーム上の「住よし」で名物きしめんをサクッと啜るのが最適解！`;
+    } else if (remainingMinutes < 45) {
+      recommendationText = `${remainingMinutes}分あれば、グランドキヨスクでお土産をじっくり選べます。赤福もまだあるかも？`;
+    } else if (remainingMinutes < 60) {
+      recommendationText = `${remainingMinutes}分ですね！エスカ地下街で「矢場とん」の味噌カツを食べるチャンスです。`;
+    } else if (remainingMinutes < 90) {
+      recommendationText = `${remainingMinutes}分あれば余裕です。高島屋51Fのカフェで絶景を楽しんでみては？`;
+    } else if (remainingMinutes < 180) {
+      recommendationText = "90分以上あります！ゲートタワーモールでショッピングと食事をフルコースで満喫できます。";
+    } else {
+      recommendationText = "3時間以上の大休憩！タクシーで「ノリタケの森」や「名古屋城」まで観光に行けますよ！";
+    }
+
+    setOptimizationResult({
+      limitTime: formatTime(limitDate),
+      station: targetStation || '目的地',
+      departureTime: targetTime,
+      remainingMinutes: remainingMinutes > 0 ? remainingMinutes : 0,
+      recommendation: recommendationText
+    });
   };
 
   const renderContent = () => {
@@ -233,7 +267,7 @@ export default function App() {
             <div className="px-6 grid grid-cols-4 gap-4">
               {[
                 { icon: <Utensils size={24} />, label: 'ランチ', color: 'bg-orange-100 text-orange-600' },
-                { icon: <Coffee size={24} />, label: 'カフェ', color: 'bg-brown-100 text-amber-700' },
+                { icon: <Coffee size={24} />, label: 'カフェ', color: 'bg-green-100 text-green-700' },
                 { icon: <ShoppingBag size={24} />, label: 'お土産', color: 'bg-pink-100 text-pink-600' },
                 { icon: <Info size={24} />, label: '案内所', color: 'bg-blue-100 text-blue-600' },
               ].map((item, idx) => (
@@ -250,14 +284,14 @@ export default function App() {
               <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
                 <div className="bg-gray-50 p-3 border-b border-gray-100 flex items-center gap-2">
                   <Calendar size={18} className="text-blue-600" />
-                  <h3 className="text-sm font-bold text-gray-700">次の予定から逆算</h3>
+                  <h3 className="text-sm font-bold text-gray-700">次の予定から最適プラン作成</h3>
                 </div>
 
                 {!optimizationResult ? (
                   <div className="p-4">
                     <p className="text-xs text-gray-500 mb-3">乗車予定を入力すると、最適な過ごし方を提案します</p>
                     <div className="flex gap-2 mb-3">
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <label className="text-[10px] font-bold text-gray-400 block mb-1">時間</label>
                         <input
                           type="time"
@@ -266,7 +300,7 @@ export default function App() {
                           className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm font-bold text-gray-800 focus:outline-none focus:border-blue-500"
                         />
                       </div>
-                      <div className="flex-[1.5]">
+                      <div className="flex-[1.5] min-w-0 ml-2">
                         <label className="text-[10px] font-bold text-gray-400 block mb-1">行き先/駅名</label>
                         <input
                           type="text"
@@ -291,7 +325,7 @@ export default function App() {
                       <div className="flex items-center justify-between text-blue-900 mb-4">
                         <div className="text-center">
                           <p className="text-[10px] text-blue-400 font-bold mb-1">NOW</p>
-                          <p className="text-xl font-bold leading-none">14:35</p>
+                          <p className="text-xl font-bold leading-none">{optimizationResult.currentTime}</p>
                         </div>
                         <div className="flex-1 px-4 flex flex-col items-center">
                           <div className="text-[10px] font-bold bg-white/80 px-2 py-0.5 rounded-full text-blue-600 mb-1 shadow-sm">
@@ -376,7 +410,7 @@ export default function App() {
                 </div>
                 <div className="flex justify-between text-sm text-gray-600 border-t pt-4">
                   <div className="text-center">
-                    <p className="font-bold text-lg text-gray-900">14:35</p>
+                    <p className="font-bold text-lg text-gray-900">{formatTime(now)}</p>
                     <p className="text-xs">現在時刻</p>
                   </div>
                   <div className="h-10 w-px bg-gray-200"></div>
