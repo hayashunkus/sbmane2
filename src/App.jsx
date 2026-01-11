@@ -529,149 +529,102 @@ export default function App() {
         return (
           <div className="h-full flex flex-col bg-gray-50">
             <div className="p-4 bg-white shadow-sm z-10">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">駅構内マップ</h2>
-              {/* Floor Switcher */}
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-800">駅構内マップ</h2>
+                {/* 絞り込み解除ボタン */}
+                {selectedCategory && (
+                  <button onClick={() => setSelectedCategory(null)} className="bg-gray-800 text-white text-[10px] px-3 py-1.5 rounded-full shadow flex items-center gap-1">
+                    {selectedCategory} ✕
+                  </button>
+                )}
+              </div>
               <div className="flex bg-gray-100 p-1 rounded-xl">
                 {['B1F', '1F', '2F'].map(floor => (
-                  <button
-                    key={floor}
-                    onClick={() => setCurrentFloor(floor)}
-                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${currentFloor === floor
-                      ? 'bg-white text-blue-600 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                      }`}
-                  >
-                    {floor}
-                  </button>
+                  <button key={floor} onClick={() => setCurrentFloor(floor)} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${currentFloor === floor ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>{floor}</button>
                 ))}
               </div>
-              {MAP_PINS
-                .filter(pin => pin.floor === currentFloor) // 現在のフロアのピンだけ
-                .map(pin => {
-                  // カテゴリー選択中なら、対象外は薄くする
-                  const isTarget = selectedCategory === pin.category;
-                  const opacity = selectedCategory && !isTarget ? 'opacity-20' : 'opacity-100 scale-110';
-
-                  return (
-                    <div
-                      key={pin.id}
-                      className={`absolute z-30 flex flex-col items-center transition-all duration-500 ${opacity}`}
-                      style={{ top: pin.top, left: pin.left }}
-                    >
-                      <div className={`relative ${isTarget ? 'animate-bounce' : ''}`}>
-                        <MapPin size={32} className="text-red-600 fill-white drop-shadow-md" />
-                        {/* 赤いピンの先端 */}
-                        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-red-600 rounded-full"></div>
-                      </div>
-                      <span className="bg-white/90 px-1.5 py-0.5 rounded text-[8px] font-bold text-gray-800 shadow-sm whitespace-nowrap mt-1">
-                        {pin.name}
-                      </span>
-                    </div>
-                  );
-                })
-              }
-
-              {/* マップ画面の上部に「絞り込み解除ボタン」があると親切です（任意） */}
-              {selectedCategory && (
-                <button
-                  onClick={() => setSelectedCategory(null)}
-                  className="absolute top-20 right-4 z-40 bg-gray-800 text-white text-xs px-3 py-1.5 rounded-full shadow-lg"
-                >
-                  {selectedCategory}を表示中 ✕
-                </button>
-              )}
-
             </div>
 
-            {/* Abstract Map Visualization (Vertical Layout) */}
             <div className="flex-1 overflow-auto p-4 relative bg-gray-100">
+              {/* 地図コンテナ: relativeをつけることで中のabsoluteなピンがこれと一緒に動く */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 min-h-[600px] relative overflow-hidden flex flex-col">
 
-                {/* 桜通口エリア (上: 金時計) */}
+                {/* --- マップ上のピン描画 (地図内部に配置) --- */}
+                {MAP_PINS
+                  .filter(pin => pin.floor === currentFloor)
+                  .map(pin => {
+                    const isTarget = selectedCategory === pin.category;
+                    // カテゴリー選択中は、対象外のピンを薄くする（非表示にはしない）
+                    const opacity = selectedCategory && !isTarget ? 'opacity-20' : 'opacity-100';
+                    const scale = isTarget ? 'scale-110 z-50' : 'scale-100 z-30';
+
+                    return (
+                      <div
+                        key={pin.id}
+                        className={`absolute flex flex-col items-center transition-all duration-500 ${opacity} ${scale}`}
+                        style={{ top: pin.top, left: pin.left }}
+                      >
+                        <div className={`relative ${isTarget ? 'animate-bounce' : ''}`}>
+                          <MapPin size={32} className="text-red-600 fill-white drop-shadow-md" />
+                          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-red-600 rounded-full"></div>
+                        </div>
+                        <span className="bg-white/90 px-1.5 py-0.5 rounded text-[8px] font-bold text-gray-800 shadow-sm whitespace-nowrap mt-1 border border-gray-100">
+                          {pin.name}
+                        </span>
+                      </div>
+                    );
+                  })
+                }
+
+                {/* --- 地図のグラフィック --- */}
                 <div className={`bg-blue-50 p-6 border-b-4 border-dashed border-blue-200 text-center relative transition-opacity ${currentFloor === '1F' ? 'opacity-100' : 'opacity-60'}`}>
-                  {/* 左右のビル */}
                   <div className="flex justify-between absolute top-4 left-4 right-4 text-xs font-bold text-gray-500">
                     <span className="bg-white/80 px-2 py-1 rounded border shadow-sm">ゲートタワー</span>
                     <span className="bg-white/80 px-2 py-1 rounded border shadow-sm">高島屋</span>
                   </div>
-
                   <div className="inline-block mt-6">
-                    <div className="w-12 h-12 bg-yellow-400 text-white rounded-full flex items-center justify-center mx-auto mb-2 shadow-lg ring-4 ring-yellow-100">
-                      <Clock size={24} strokeWidth={2.5} />
-                    </div>
+                    <div className="w-12 h-12 bg-yellow-400 text-white rounded-full flex items-center justify-center mx-auto mb-2 shadow-lg ring-4 ring-yellow-100"><Clock size={24} strokeWidth={2.5} /></div>
                     <h3 className="font-bold text-blue-900 text-lg">桜通口 (Gold Clock)</h3>
                     <p className="text-[10px] text-blue-600 font-bold">東側エリア</p>
                   </div>
                 </div>
 
-                {/* 中央コンコース (縦長の通路) */}
                 <div className="flex-1 bg-yellow-50 relative flex justify-center py-6 overflow-visible">
-                  {/* コンコースの床面ガイドライン */}
                   <div className="h-full w-32 bg-white border-x-2 border-dashed border-yellow-200 absolute left-1/2 -translate-x-1/2 top-0 bottom-0"></div>
-
-                  {/* 通路内の要素 */}
                   <div className="z-10 flex flex-col items-center justify-between h-full w-full py-4 gap-8">
-                    {/* 中央改札 */}
                     <div className="relative w-full flex justify-center">
-                      <div className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow-md text-xs font-bold flex items-center gap-2 transform hover:scale-105 transition-transform">
-                        <Ticket size={14} /> JR線 中央改札
-                      </div>
+                      <div className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow-md text-xs font-bold flex items-center gap-2 transform hover:scale-105 transition-transform"><Ticket size={14} /> JR線 中央改札</div>
                     </div>
-
-                    {/* ぴよりんShop (目印) */}
                     <div className="relative w-full flex justify-center pl-24">
                       <div className="bg-white px-3 py-2 rounded-xl shadow-md border border-yellow-300 flex items-center gap-2 text-xs font-bold transform -rotate-2 hover:rotate-0 transition-transform cursor-pointer">
                         <span className="text-xl bg-yellow-100 rounded-full p-1">🐥</span>
-                        <div>
-                          <span className="block text-gray-800">ぴよりんshop</span>
-                          <span className="text-[9px] text-red-500">行列注意</span>
-                        </div>
+                        <div><span className="block text-gray-800">ぴよりんshop</span><span className="text-[9px] text-red-500">行列注意</span></div>
                       </div>
                     </div>
-
-                    {/* お土産街道 */}
                     <div className="relative w-full flex justify-center pr-24">
-                      <div className="bg-white px-3 py-2 rounded-lg shadow-sm border border-gray-200 text-xs font-bold text-gray-600">
-                        🎁 お土産街道
-                      </div>
+                      <div className="bg-white px-3 py-2 rounded-lg shadow-sm border border-gray-200 text-xs font-bold text-gray-600">🎁 お土産街道</div>
                     </div>
                   </div>
-
-                  {/* 現在地ピン (アニメーション付き) */}
                   <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
                     <div className="w-12 h-12 bg-blue-600/20 rounded-full animate-ping absolute top-0 left-0"></div>
-                    <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center shadow-xl border-4 border-white relative z-10">
-                      <Navigation size={20} className="text-white transform -rotate-45" fill="currentColor" />
-                    </div>
-                    <div className="bg-gray-900 text-white text-[10px] font-bold px-2 py-1 rounded absolute top-full left-1/2 -translate-x-1/2 mt-2 whitespace-nowrap shadow-lg">
-                      現在地: コンコース中央
-                    </div>
+                    <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center shadow-xl border-4 border-white relative z-10"><Navigation size={20} className="text-white transform -rotate-45" fill="currentColor" /></div>
+                    <div className="bg-gray-900 text-white text-[10px] font-bold px-2 py-1 rounded absolute top-full left-1/2 -translate-x-1/2 mt-2 whitespace-nowrap shadow-lg">現在地: コンコース中央</div>
                   </div>
                 </div>
 
-                {/* 太閤通口エリア (下: 銀時計) */}
                 <div className={`bg-green-50 p-6 border-t-4 border-dashed border-green-200 text-center relative transition-opacity ${currentFloor === '1F' ? 'opacity-100' : 'opacity-60'}`}>
-                  {/* 左右の施設 */}
                   <div className="flex justify-between absolute bottom-4 left-4 right-4 text-xs font-bold text-gray-500">
                     <span className="bg-white/80 px-2 py-1 rounded border shadow-sm">あおなみ線</span>
                     <span className="bg-white/80 px-2 py-1 rounded border shadow-sm">新幹線改札</span>
                   </div>
-
                   <div className="inline-block mb-6">
                     <h3 className="font-bold text-green-900 text-lg">太閤通口 (Silver Clock)</h3>
                     <p className="text-[10px] text-green-700 font-bold mb-2">西側・新幹線エリア</p>
-                    <div className="w-12 h-12 bg-gray-300 text-white rounded-full flex items-center justify-center mx-auto shadow-lg ring-4 ring-gray-100">
-                      <Clock size={24} strokeWidth={2.5} />
-                    </div>
+                    <div className="w-12 h-12 bg-gray-300 text-white rounded-full flex items-center justify-center mx-auto shadow-lg ring-4 ring-gray-100"><Clock size={24} strokeWidth={2.5} /></div>
                   </div>
                 </div>
-
               </div>
-
-              {/* Note */}
-              <div className="mt-4 text-center">
-                <p className="text-xs text-gray-400 mb-2">※ 中央コンコースを直線で表現した簡易マップです</p>
-              </div>
+              <div className="mt-4 text-center"><p className="text-xs text-gray-400 mb-2">※ 中央コンコースを直線で表現した簡易マップです</p></div>
             </div>
           </div>
         );
