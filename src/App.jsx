@@ -522,14 +522,14 @@ export default function App() {
   };
 
   return (
-    <div className="w-full max-w-md mx-auto h-screen bg-gray-50 flex flex-col relative font-sans text-gray-900 overflow-hidden">
+    <div className="w-full max-w-md mx-auto h-[100dvh] bg-gray-50 flex flex-col relative font-sans text-gray-900 overflow-hidden">
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto scrollbar-hide">
         {renderContent()}
       </div>
 
       {/* Bottom Navigation */}
-      <div className="bg-white border-t border-gray-200 pb-safe pt-2 px-6 flex justify-between items-center shadow-[0_-5px_20px_rgba(0,0,0,0.05)] z-40">
+      <div className="bg-white border-t border-gray-200 pt-2 px-6 pb-[env(safe-area-inset-bottom,16px)] flex justify-between items-center shadow-[0_-5px_20px_rgba(0,0,0,0.05)] z-40">
         {[
           { id: 'home', icon: <Home size={24} />, label: 'ホーム' },
           { id: 'map', icon: <Map size={24} />, label: 'マップ' },
