@@ -195,6 +195,9 @@ export default function App() {
     const targetDate = new Date(now);
     targetDate.setHours(targetHour, targetMin, 0);
 
+    // もしターゲット時刻が現在より過去の場合、翌日として扱うなどの処理も可能だが
+    // ここでは簡易的に当日として計算（マイナスになる場合は考慮）
+
     // リミット時間の計算（移動15分前）
     const limitDate = new Date(targetDate);
     limitDate.setMinutes(limitDate.getMinutes() - 15);
@@ -222,7 +225,6 @@ export default function App() {
 
     setOptimizationResult({
       limitTime: formatTime(limitDate),
-      currentTime: formatTime(now), // 【修正1】計算した瞬間の時刻を保存する行を追加
       station: targetStation || '目的地',
       departureTime: targetTime,
       remainingMinutes: remainingMinutes > 0 ? remainingMinutes : 0,
