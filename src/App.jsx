@@ -40,6 +40,19 @@ const COUPONS = [
 const PLANS = [
   {
     id: 1,
+    title: '90分で満喫！うまいもん＆デパ地下',
+    duration: '90分',
+    tags: ['グルメ', 'ショッピング', '定番'],
+    color: 'bg-pink-100 text-pink-800',
+    steps: [
+      { time: '11:00', label: '中央コンコースからスタート' },
+      { time: '11:10', label: '「うまいもん通り」でひつまぶしランチ' },
+      { time: '12:00', label: 'JR名古屋タカシマヤへ移動' },
+      { time: '12:10', label: 'B1Fデパ地下で限定スイーツ探索' },
+    ]
+  },
+  {
+    id: 2,
     title: '乗り換え60分！名物早食いプラン',
     duration: '60分',
     tags: ['グルメ', 'クイック'],
@@ -51,8 +64,9 @@ const PLANS = [
       { time: '00:50', label: '新幹線ホームへ移動' },
     ]
   },
+
   {
-    id: 2,
+    id: 3,
     title: '雨に濡れずに！地下街ショッピング',
     duration: '3時間',
     tags: ['ショッピング', '雨の日OK'],
