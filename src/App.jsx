@@ -31,6 +31,19 @@ import {
  */
 
 // --- モックデータ (Mock Data) ---
+const MAP_PINS = [
+  // 1F
+  { id: 1, category: 'ランチ', floor: '1F', top: '40%', left: '20%', name: 'うまいもん通り' },
+  { id: 2, category: 'カフェ', floor: '1F', top: '55%', left: '60%', name: 'カフェ・ド・クリエ' },
+  { id: 3, category: 'お土産', floor: '1F', top: '30%', left: '75%', name: 'ギフトキヨスク' },
+  { id: 4, category: '案内所', floor: '1F', top: '48%', left: '48%', name: '総合案内所' },
+  // 2F
+  { id: 5, category: 'カフェ', floor: '2F', top: '30%', left: '30%', name: 'タカシマヤ カフェ' },
+  { id: 6, category: 'ランチ', floor: '2F', top: '60%', left: '60%', name: 'レストラン街' },
+  // B1F
+  { id: 7, category: 'ランチ', floor: 'B1F', top: '40%', left: '30%', name: 'エスカ地下街' },
+  { id: 8, category: 'お土産', floor: 'B1F', top: '70%', left: '50%', name: '地下お土産売り場' },
+];
 
 const COUPONS = [
   { id: 1, name: '矢場とん エスカ店', discount: '100円OFF', category: 'グルメ', image: '🐷', location: 'エスカ地下街', description: '名物みそかつ定食ご注文の方限定' },
@@ -92,17 +105,19 @@ const SMART_SERVICES = [
     color: 'bg-yellow-100 text-yellow-800',
     borderColor: 'border-yellow-200',
     badge: '予約推奨',
-    action: '予約サイトへ'
+    action: '予約サイトへ',
+    link: 'https://market.jr-central.co.jp/shop/e/epiyoyaku/'
   },
   {
     id: 'locker',
     title: 'ロッカーコンシェルジュ',
-    description: '空きロッカーをリアルタイム検索・予約',
+    description: '空きロッカーをリアルタイム検索',
     icon: <Package size={20} />,
     color: 'bg-blue-100 text-blue-800',
     borderColor: 'border-blue-200',
     badge: '空きわずか',
-    action: '探す'
+    action: '探す',
+    link: 'https://www.akilocker.biz/mobile/area.html?locationId=JR_NAGOYA&lang=1'
   },
   {
     id: 'ex_yoyaku',
@@ -112,7 +127,8 @@ const SMART_SERVICES = [
     color: 'bg-indigo-100 text-indigo-800',
     borderColor: 'border-indigo-200',
     badge: '便利',
-    action: '連携'
+    action: '連携',
+    link: 'https://expy.jp/'
   }
 ];
 
@@ -157,6 +173,8 @@ const BeaconPopup = ({ coupon, onClose }) => (
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('home');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState(null);
   const [showBeaconDemo, setShowBeaconDemo] = useState(false);
   const [currentFloor, setCurrentFloor] = useState('1F');
 
@@ -232,6 +250,16 @@ export default function App() {
     });
   };
 
+  const handleSearch = (e) => {
+    // Enterキーが押され、かつ文字が入力されている場合のみ実行
+    if (e.key === 'Enter' && searchQuery.trim()) {
+      // Googleで「site:www.meieki.com キーワード」の形式で検索させるURLを作成
+      const url = `https://www.google.com/search?q=site:www.meieki.com+${encodeURIComponent(searchQuery)}`;
+      // 新しいタブで開く
+      window.open(url, '_blank');
+    }
+  };
+
   const renderContent = () => {
     switch (activeTab) {
       case 'home':
@@ -257,7 +285,10 @@ export default function App() {
                 <Search className="text-blue-200" size={20} />
                 <input
                   type="text"
-                  placeholder="お店、出口、トイレを探す..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={handleSearch} // Enterキーの入力を検知
+                  placeholder="気になること検索..."
                   className="bg-transparent text-white placeholder-blue-200 w-full outline-none"
                 />
               </div>
@@ -272,7 +303,14 @@ export default function App() {
                 { icon: <Info size={24} />, label: '案内所', color: 'bg-blue-100 text-blue-600' },
               ].map((item, idx) => (
                 <div key={idx} className="flex flex-col items-center gap-2">
-                  <div className={`${item.color} p-4 rounded-2xl shadow-sm active:scale-95 transition-transform cursor-pointer`}>
+                  <div
+                    onClick={() => {
+                      setSelectedCategory(item.label); // カテゴリーをセット
+                      setActiveTab('map');             // マップタブへ移動
+                      setCurrentFloor('1F');           // とりあえず1Fを表示
+                    }}
+                    className={`${item.color} p-4 rounded-2xl shadow-sm active:scale-95 transition-transform cursor-pointer`}
+                  >
                     {item.icon}
                   </div>
                   <span className="text-xs font-medium text-gray-600">{item.label}</span>
@@ -388,7 +426,9 @@ export default function App() {
                     <p className="text-xs text-gray-600 mb-2">現在、待機列が<span className="font-bold text-red-500">60分以上</span>発生しています。</p>
 
                     {/* Smart Piyo-Yoyaku Card */}
-                    <div className="bg-white p-3 rounded-xl border border-yellow-200 shadow-sm flex items-center gap-3 cursor-pointer hover:bg-yellow-50 transition-colors">
+                    <div className="bg-white p-3 rounded-xl border border-yellow-200 shadow-sm flex items-center gap-3 cursor-pointer hover:bg-yellow-50 transition-colors"
+                      onClick={() => window.open('https://market.jr-central.co.jp/shop/e/epiyoyaku/', '_blank')}
+                    >
                       <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center text-xl flex-shrink-0">
                         🐥
                       </div>
@@ -438,7 +478,9 @@ export default function App() {
               </h3>
               <div className="flex overflow-x-auto gap-3 pb-4 pr-6 scrollbar-hide">
                 {SMART_SERVICES.map(service => (
-                  <div key={service.id} className={`min-w-[200px] bg-white p-4 rounded-2xl shadow-sm border ${service.borderColor} flex flex-col justify-between relative group cursor-pointer`}>
+                  <div key={service.id} className={`min-w-[200px] bg-white p-4 rounded-2xl shadow-sm border ${service.borderColor} flex flex-col justify-between relative group cursor-pointer`}
+                    onClick={() => service.link && window.open(service.link, '_blank')}
+                  >
                     <div className="mb-2">
                       <div className={`w-8 h-8 rounded-full ${service.color} flex items-center justify-center mb-3`}>
                         {service.icon}
@@ -503,6 +545,42 @@ export default function App() {
                   </button>
                 ))}
               </div>
+              {MAP_PINS
+                .filter(pin => pin.floor === currentFloor) // 現在のフロアのピンだけ
+                .map(pin => {
+                  // カテゴリー選択中なら、対象外は薄くする
+                  const isTarget = selectedCategory === pin.category;
+                  const opacity = selectedCategory && !isTarget ? 'opacity-20' : 'opacity-100 scale-110';
+
+                  return (
+                    <div
+                      key={pin.id}
+                      className={`absolute z-30 flex flex-col items-center transition-all duration-500 ${opacity}`}
+                      style={{ top: pin.top, left: pin.left }}
+                    >
+                      <div className={`relative ${isTarget ? 'animate-bounce' : ''}`}>
+                        <MapPin size={32} className="text-red-600 fill-white drop-shadow-md" />
+                        {/* 赤いピンの先端 */}
+                        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-red-600 rounded-full"></div>
+                      </div>
+                      <span className="bg-white/90 px-1.5 py-0.5 rounded text-[8px] font-bold text-gray-800 shadow-sm whitespace-nowrap mt-1">
+                        {pin.name}
+                      </span>
+                    </div>
+                  );
+                })
+              }
+
+              {/* マップ画面の上部に「絞り込み解除ボタン」があると親切です（任意） */}
+              {selectedCategory && (
+                <button
+                  onClick={() => setSelectedCategory(null)}
+                  className="absolute top-20 right-4 z-40 bg-gray-800 text-white text-xs px-3 py-1.5 rounded-full shadow-lg"
+                >
+                  {selectedCategory}を表示中 ✕
+                </button>
+              )}
+
             </div>
 
             {/* Abstract Map Visualization (Vertical Layout) */}
