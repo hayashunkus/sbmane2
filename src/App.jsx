@@ -195,9 +195,6 @@ export default function App() {
     const targetDate = new Date(now);
     targetDate.setHours(targetHour, targetMin, 0);
 
-    // もしターゲット時刻が現在より過去の場合、翌日として扱うなどの処理も可能だが
-    // ここでは簡易的に当日として計算（マイナスになる場合は考慮）
-
     // リミット時間の計算（移動15分前）
     const limitDate = new Date(targetDate);
     limitDate.setMinutes(limitDate.getMinutes() - 15);
@@ -225,6 +222,7 @@ export default function App() {
 
     setOptimizationResult({
       limitTime: formatTime(limitDate),
+      currentTime: formatTime(now), // 【修正1】計算した瞬間の時刻を保存する行を追加
       station: targetStation || '目的地',
       departureTime: targetTime,
       remainingMinutes: remainingMinutes > 0 ? remainingMinutes : 0,
@@ -290,7 +288,8 @@ export default function App() {
                 {!optimizationResult ? (
                   <div className="p-4">
                     <p className="text-xs text-gray-500 mb-3">乗車予定を入力すると、最適な過ごし方を提案します</p>
-                    <div className="flex gap-2 mb-3">
+
+                    <div className="flex gap-4 mb-3">
                       <div className="flex-1 min-w-0">
                         <label className="text-[10px] font-bold text-gray-400 block mb-1">時間</label>
                         <input
@@ -311,6 +310,7 @@ export default function App() {
                         />
                       </div>
                     </div>
+
                     <button
                       onClick={calculateOptimizedPlan}
                       className="w-full bg-blue-600 text-white font-bold py-2.5 rounded-xl text-sm shadow-sm active:scale-95 transition-transform"
@@ -325,10 +325,11 @@ export default function App() {
                       <div className="flex items-center justify-between text-blue-900 mb-4">
                         <div className="text-center">
                           <p className="text-[10px] text-blue-400 font-bold mb-1">NOW</p>
+                          {/* ★ここで計算時の時刻を表示 */}
                           <p className="text-xl font-bold leading-none">{optimizationResult.currentTime}</p>
                         </div>
                         <div className="flex-1 px-4 flex flex-col items-center">
-                          <div className="text-[10px] font-bold bg-white/80 px-2 py-0.5 rounded-full text-blue-600 mb-1 shadow-sm">
+                          <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full text-white mb-1 shadow-sm ${optimizationResult.remainingMinutes > 30 ? 'bg-green-500' : optimizationResult.remainingMinutes > 15 ? 'bg-yellow-500' : 'bg-red-500'}`}>
                             残り {optimizationResult.remainingMinutes}分
                           </div>
                           <div className="w-full h-1 bg-blue-200 rounded-full relative">
