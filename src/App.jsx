@@ -20,7 +20,9 @@ import {
   Package,
   Zap,
   AlertCircle,
-  TrainFront
+  TrainFront,
+  Calendar,
+  ArrowRight
 } from 'lucide-react';
 
 /**
@@ -157,6 +159,39 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('home');
   const [showBeaconDemo, setShowBeaconDemo] = useState(false);
   const [currentFloor, setCurrentFloor] = useState('1F');
+  // 新機能: スケジュール最適化用のステート
+  const [targetTime, setTargetTime] = useState('');
+  const [targetStation, setTargetStation] = useState('');
+  const [optimizationResult, setOptimizationResult] = useState(null);
+
+  // スケジュール最適化計算（デモ用ロジック）
+  const calculateOptimizedPlan = () => {
+    if (!targetTime) return;
+
+    // 現在時刻を14:35と仮定
+    const currentTimeStr = "14:35";
+
+    // 入力された時間をパース
+    const [targetHour, targetMin] = targetTime.split(':').map(Number);
+
+    // 改札までの移動時間を15分と仮定し、リミット時間を算出
+    let limitHour = targetHour;
+    let limitMin = targetMin - 15;
+    if (limitMin < 0) {
+      limitMin += 60;
+      limitHour -= 1;
+    }
+    const limitTimeStr = `${String(limitHour).padStart(2, '0')}:${String(limitMin).padStart(2, '0')}`;
+
+    // 結果をセット
+    setOptimizationResult({
+      limitTime: limitTimeStr,
+      station: targetStation || '目的地',
+      departureTime: targetTime,
+      remainingMinutes: 45, // デモ用に「あと45分」と仮定
+      recommendation: "45分あれば、高島屋のデパ地下でお土産選びが最適です！"
+    });
+  };
 
   // 擬似的なビーコン検知デモ
   const triggerBeaconDemo = () => {
@@ -210,6 +245,99 @@ export default function App() {
                 </div>
               ))}
             </div>
+            {/* ▼▼▼ ここから追加（次の予定から逆算セクション） ▼▼▼ */}
+            <div className="px-6">
+              <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
+                <div className="bg-gray-50 p-3 border-b border-gray-100 flex items-center gap-2">
+                  <Calendar size={18} className="text-blue-600" />
+                  <h3 className="text-sm font-bold text-gray-700">次の予定から逆算</h3>
+                </div>
+
+                {!optimizationResult ? (
+                  <div className="p-4">
+                    <p className="text-xs text-gray-500 mb-3">乗車予定を入力すると、最適な過ごし方を提案します</p>
+                    <div className="flex gap-2 mb-3">
+                      <div className="flex-1">
+                        <label className="text-[10px] font-bold text-gray-400 block mb-1">時間</label>
+                        <input
+                          type="time"
+                          value={targetTime}
+                          onChange={(e) => setTargetTime(e.target.value)}
+                          className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm font-bold text-gray-800 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="flex-[1.5]">
+                        <label className="text-[10px] font-bold text-gray-400 block mb-1">行き先/駅名</label>
+                        <input
+                          type="text"
+                          placeholder="例: 東京駅"
+                          value={targetStation}
+                          onChange={(e) => setTargetStation(e.target.value)}
+                          className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm text-gray-800 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      onClick={calculateOptimizedPlan}
+                      className="w-full bg-blue-600 text-white font-bold py-2.5 rounded-xl text-sm shadow-sm active:scale-95 transition-transform"
+                    >
+                      プランを提案する
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-0">
+                    <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 relative">
+                      {/* Ticket-like view */}
+                      <div className="flex items-center justify-between text-blue-900 mb-4">
+                        <div className="text-center">
+                          <p className="text-[10px] text-blue-400 font-bold mb-1">NOW</p>
+                          <p className="text-xl font-bold leading-none">14:35</p>
+                        </div>
+                        <div className="flex-1 px-4 flex flex-col items-center">
+                          <div className="text-[10px] font-bold bg-white/80 px-2 py-0.5 rounded-full text-blue-600 mb-1 shadow-sm">
+                            残り {optimizationResult.remainingMinutes}分
+                          </div>
+                          <div className="w-full h-1 bg-blue-200 rounded-full relative">
+                            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-blue-500 rounded-full"></div>
+                          </div>
+                          <p className="text-[10px] text-blue-400 mt-1">移動 15分</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] text-red-400 font-bold mb-1">LIMIT</p>
+                          <p className="text-xl font-bold leading-none text-red-500">{optimizationResult.limitTime}</p>
+                        </div>
+                      </div>
+
+                      <div className="bg-white p-3 rounded-xl shadow-sm border border-blue-100 flex items-start gap-3">
+                        <div className="bg-blue-100 p-2 rounded-lg text-blue-600 mt-1">
+                          <Compass size={20} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-blue-600 mb-1">おすすめの過ごし方</p>
+                          <p className="text-sm font-bold text-gray-800 leading-snug">
+                            {optimizationResult.recommendation}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex justify-between items-center border-t border-blue-100/50 pt-2">
+                        <p className="text-xs text-blue-800 font-bold flex items-center gap-1">
+                          <TrainFront size={14} />
+                          {optimizationResult.departureTime}発 {optimizationResult.station}行
+                        </p>
+                        <button
+                          onClick={() => setOptimizationResult(null)}
+                          className="text-xs text-gray-400 underline"
+                        >
+                          リセット
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* ▲▲▲ ここまで追加 ▲▲▲ */}
 
             {/* Smart Alert & Recommendation (New Feature) */}
             <div className="px-6">
