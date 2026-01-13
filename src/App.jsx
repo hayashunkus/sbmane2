@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Map,
   Ticket,
@@ -35,7 +35,7 @@ import {
 
 /**
  * 名古屋駅スマートコンシェルジュ (Nagoya Station Smart Concierge)
- * Update: 人気スポット表示 & クーポン保存機能の実装
+ * Update: おすすめプラン詳細へのスムーズな遷移機能
  */
 
 // --- 定数データ (Data) ---
@@ -47,7 +47,6 @@ const COUPONS = [
   { id: 4, name: 'きしめん 住よし', discount: '天ぷら1品無料', category: 'グルメ', image: '🍜', location: '新幹線ホーム', description: '麺類ご注文の方' },
 ];
 
-// 追加: 周辺の人気スポット
 const POPULAR_SPOTS = [
   { id: 1, name: 'ノリタケの森', description: '陶磁器の複合施設。散策やカフェが楽しめます', link: 'https://www.noritake.co.jp/mori/' },
   { id: 2, name: '大名古屋ビルヂング', description: '駅直結。最新グルメやショッピングが集結', link: 'https://dainagoyabuilding.com/' },
@@ -63,10 +62,10 @@ const PLANS = [
     tags: ['グルメ', 'ショッピング', '定番'],
     color: 'bg-pink-100 text-pink-800',
     steps: [
-      { time: '11:00', label: '中央コンコースからスタート' },
-      { time: '11:10', label: '「うまいもん通り」でひつまぶしランチ' },
-      { time: '12:00', label: 'JR名古屋タカシマヤへ移動' },
-      { time: '12:10', label: 'B1Fデパ地下で限定スイーツ探索' },
+      { time: '11:00', label: '中央コンコースからスタート', floor: '1F', x: 200, y: 300 },
+      { time: '11:10', label: '「うまいもん通り」でひつまぶしランチ', floor: '1F', x: 80, y: 480 },
+      { time: '12:00', label: 'JR名古屋タカシマヤへ移動', floor: '1F', x: 320, y: 300 },
+      { time: '12:10', label: 'B1Fデパ地下で限定スイーツ探索', floor: 'B1F', x: 250, y: 150 },
     ]
   },
   {
@@ -76,10 +75,10 @@ const PLANS = [
     tags: ['グルメ', 'クイック'],
     color: 'bg-orange-100 text-orange-800',
     steps: [
-      { time: '00:00', label: '新幹線改札口 到着' },
-      { time: '00:10', label: '「住よし」できしめんを啜る' },
-      { time: '00:30', label: 'グランドキヨスクでお土産購入' },
-      { time: '00:50', label: '新幹線ホームへ移動' },
+      { time: '00:00', label: '新幹線改札口 到着', floor: '1F', x: 80, y: 390 },
+      { time: '00:10', label: '「住よし」できしめん', floor: '1F', x: 100, y: 350 },
+      { time: '00:30', label: 'グランドキヨスクでお土産', floor: '1F', x: 200, y: 250 },
+      { time: '00:50', label: '新幹線ホームへ移動', floor: '1F', x: 80, y: 390 },
     ]
   },
   {
@@ -89,10 +88,10 @@ const PLANS = [
     tags: ['ショッピング', '雨の日OK'],
     color: 'bg-blue-100 text-blue-800',
     steps: [
-      { time: '10:00', label: '金時計前 集合' },
-      { time: '10:15', label: 'ゲートタワーモールでウィンドウショッピング' },
-      { time: '11:30', label: 'サンロード地下街へ移動' },
-      { time: '12:00', label: '地下街でランチ' },
+      { time: '10:00', label: '金時計前 集合', floor: '1F', x: 200, y: 80 },
+      { time: '10:15', label: 'ゲートタワーモールで買い物', floor: '1F', x: 80, y: 80 },
+      { time: '11:30', label: 'サンロード地下街へ移動', floor: '1F', x: 200, y: 400 },
+      { time: '12:00', label: '地下街でランチ', floor: 'B1F', x: 200, y: 400 },
     ]
   }
 ];
@@ -118,7 +117,7 @@ const SMART_SERVICES = [
     borderColor: 'border-blue-200',
     badge: '空きわずか',
     action: '探す',
-    link: 'https://www.meieki.com/'
+    link: 'https://www.akilocker.biz/mobile/map.html?locationId=JR_NAGOYA&mapId=M32001&lang=1'
   },
   {
     id: 'ex_yoyaku',
@@ -133,6 +132,9 @@ const SMART_SERVICES = [
   }
 ];
 
+const MAP_WIDTH = 400;
+const MAP_HEIGHT = 600;
+
 const MAP_PINS = [
   // 1F
   { id: 1, category: 'ランチ', floor: '1F', x: 80, y: 480, name: 'うまいもん通り(太閤)' },
@@ -141,9 +143,11 @@ const MAP_PINS = [
   { id: 4, category: '案内所', floor: '1F', x: 200, y: 280, name: '総合案内所' },
   { id: 9, category: '待ち合わせ', floor: '1F', x: 200, y: 80, name: '金の時計' },
   { id: 10, category: '待ち合わせ', floor: '1F', x: 200, y: 520, name: '銀の時計' },
+
   // 2F
   { id: 5, category: 'カフェ', floor: '2F', x: 300, y: 200, name: 'タカシマヤ カフェ' },
   { id: 6, category: 'ランチ', floor: '2F', x: 100, y: 400, name: 'レストラン街' },
+
   // B1F
   { id: 7, category: 'ランチ', floor: 'B1F', x: 100, y: 450, name: 'エスカ地下街' },
   { id: 8, category: 'お土産', floor: 'B1F', x: 250, y: 150, name: '地下お土産売り場' },
@@ -168,21 +172,14 @@ const SideMenu = ({ isOpen, onClose, onShowPopularSpots, onShowSavedCoupons }) =
 
   return (
     <div className="fixed inset-0 z-[60] flex justify-end">
-      {/* 背景 (クリックで閉じる) */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
         onClick={onClose}
       ></div>
-
-      {/* メニューパネル (右からスライド) */}
       <div className="relative w-3/4 max-w-xs h-full bg-white shadow-2xl p-6 flex flex-col animate-in slide-in-from-right duration-300">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200"
-        >
+        <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200">
           <X size={20} />
         </button>
-
         <div className="flex items-center gap-3 mb-8 mt-4 pb-6 border-b border-gray-100">
           <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 ring-4 ring-blue-50">
             <User size={24} />
@@ -192,29 +189,17 @@ const SideMenu = ({ isOpen, onClose, onShowPopularSpots, onShowSavedCoupons }) =
             <p className="text-xs text-blue-500 font-bold cursor-pointer">マイページを表示</p>
           </div>
         </div>
-
         <div className="space-y-1 flex-1 overflow-y-auto">
           <p className="text-xs font-bold text-gray-400 mb-2 px-3">メインメニュー</p>
-          <MenuItem
-            icon={<Star size={18} />}
-            label="周辺の人気スポット"
-            onClick={() => { onClose(); onShowPopularSpots(); }}
-          />
-          <MenuItem
-            icon={<Ticket size={18} />}
-            label="保存したクーポン"
-            onClick={() => { onClose(); onShowSavedCoupons(); }}
-          />
+          <MenuItem icon={<Star size={18} />} label="周辺の人気スポット" onClick={() => { onClose(); onShowPopularSpots(); }} />
+          <MenuItem icon={<Ticket size={18} />} label="保存したクーポン" onClick={() => { onClose(); onShowSavedCoupons(); }} />
           <MenuItem icon={<Clock size={18} />} label="履歴・最近見たプラン" onClick={onClose} />
-
           <div className="h-px bg-gray-100 my-4 mx-3"></div>
-
           <p className="text-xs font-bold text-gray-400 mb-2 px-3">サポート・設定</p>
           <MenuItem icon={<Settings size={18} />} label="アプリ設定" onClick={onClose} />
           <MenuItem icon={<HelpCircle size={18} />} label="ヘルプ・よくある質問" onClick={onClose} />
           <MenuItem icon={<FileText size={18} />} label="利用規約・ポリシー" onClick={onClose} />
         </div>
-
         <button className="flex items-center gap-3 text-red-500 font-bold p-3 hover:bg-red-50 rounded-xl transition-colors mt-4 text-sm">
           <LogOut size={18} />
           ログアウト
@@ -224,7 +209,7 @@ const SideMenu = ({ isOpen, onClose, onShowPopularSpots, onShowSavedCoupons }) =
   );
 };
 
-// 汎用リストモーダル (人気スポット & 保存クーポン用)
+// 汎用リストモーダル
 const ListModal = ({ title, items, onClose, type, onRemove }) => (
   <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
     <div className="bg-white rounded-2xl w-full max-w-sm max-h-[80vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
@@ -238,42 +223,25 @@ const ListModal = ({ title, items, onClose, type, onRemove }) => (
         ) : (
           items.map((item) => (
             <div key={item.id} className="bg-gray-50 p-3 rounded-xl border border-gray-100 flex gap-3 items-start relative group">
-              {/* アイコン/画像エリア */}
               <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center text-2xl shadow-sm flex-shrink-0">
                 {type === 'coupon' ? item.image : <MapPin className="text-red-500" />}
               </div>
-
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
                   <h4 className="font-bold text-gray-800 text-sm truncate">{item.name}</h4>
                   {type === 'coupon' && (
-                    <button
-                      onClick={() => onRemove(item.id)}
-                      className="text-gray-400 hover:text-red-500 p-1"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <button onClick={() => onRemove(item.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>
                   )}
                 </div>
-                {type === 'coupon' && (
-                  <p className="text-orange-500 font-bold text-xs">{item.discount}</p>
-                )}
+                {type === 'coupon' && <p className="text-orange-500 font-bold text-xs">{item.discount}</p>}
                 <p className="text-xs text-gray-500 mt-1 leading-snug line-clamp-2">{item.description}</p>
-
-                {/* スポットの場合のリンク */}
                 {type === 'spot' && (
-                  <button
-                    onClick={() => window.open(item.link, '_blank')}
-                    className="mt-2 text-[10px] bg-blue-100 text-blue-600 px-2 py-1 rounded flex items-center gap-1 w-fit hover:bg-blue-200 transition"
-                  >
+                  <button onClick={() => window.open(item.link, '_blank')} className="mt-2 text-[10px] bg-blue-100 text-blue-600 px-2 py-1 rounded flex items-center gap-1 w-fit hover:bg-blue-200 transition">
                     公式サイトを見る <ExternalLink size={10} />
                   </button>
                 )}
-                {/* クーポンの場合の利用ボタン */}
                 {type === 'coupon' && (
-                  <button className="mt-2 bg-gray-800 text-white text-[10px] px-3 py-1 rounded-full hover:bg-gray-600 transition">
-                    今すぐ利用する
-                  </button>
+                  <button className="mt-2 bg-gray-800 text-white text-[10px] px-3 py-1 rounded-full hover:bg-gray-600 transition">今すぐ利用する</button>
                 )}
               </div>
             </div>
@@ -301,12 +269,7 @@ const BeaconPopup = ({ coupon, onClose, onSave }) => (
             <p className="text-blue-600 font-bold">{coupon.discount}</p>
           </div>
         </div>
-        <button
-          onClick={() => { onSave(coupon); onClose(); }}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg transform transition active:scale-95"
-        >
-          クーポンを保存する
-        </button>
+        <button onClick={() => { onSave(coupon); onClose(); }} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg transform transition active:scale-95">クーポンを保存する</button>
         <button onClick={onClose} className="mt-3 text-gray-400 text-sm hover:text-gray-600">閉じる</button>
       </div>
     </div>
@@ -325,28 +288,40 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedPinId, setSelectedPinId] = useState(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  // モーダル管理用のState
-  const [activeModal, setActiveModal] = useState(null); // 'popular' | 'saved' | null
-
-  // 保存したクーポン管理
+  const [activeModal, setActiveModal] = useState(null);
   const [savedCoupons, setSavedCoupons] = useState([]);
 
-  // 現在地
-  const currentLocation = { x: 200, y: 300, floor: '1F' };
+  // 案内中のプラン
+  const [activePlan, setActivePlan] = useState(null);
+
+  // Update: フォーカスするプランIDとRef
+  const [focusedPlanId, setFocusedPlanId] = useState(null);
+  const planRefs = useRef({});
+
+  const baseLocation = { x: 200, y: 300, floor: '1F' };
+  const currentLocation = activePlan
+    ? { x: activePlan.steps[0].x, y: activePlan.steps[0].y, floor: activePlan.steps[0].floor }
+    : baseLocation;
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const formatTime = (date) => date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+  // Update: プランタブに遷移した際に該当プランまでスクロール
+  useEffect(() => {
+    if (activeTab === 'plans' && focusedPlanId && planRefs.current[focusedPlanId]) {
+      // 描画完了を少し待ってからスクロール
+      setTimeout(() => {
+        planRefs.current[focusedPlanId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    }
+  }, [activeTab, focusedPlanId]);
 
+  const formatTime = (date) => date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
   const triggerBeaconDemo = () => setShowBeaconDemo(true);
 
-  // クーポン保存処理
   const handleSaveCoupon = (coupon) => {
-    // 重複チェック
     if (!savedCoupons.some(c => c.id === coupon.id)) {
       setSavedCoupons([...savedCoupons, coupon]);
       alert('クーポンを保存しました！メニューから確認できます。');
@@ -355,16 +330,31 @@ export default function App() {
     }
   };
 
-  // クーポン削除処理
-  const handleRemoveCoupon = (id) => {
-    setSavedCoupons(savedCoupons.filter(c => c.id !== id));
-  };
+  const handleRemoveCoupon = (id) => setSavedCoupons(savedCoupons.filter(c => c.id !== id));
 
   const handleSearch = (e) => {
     if (e.key === 'Enter' && searchQuery.trim()) {
       const url = `https://www.google.com/search?q=site:www.meieki.com+${encodeURIComponent(searchQuery)}`;
       window.open(url, '_blank');
     }
+  };
+
+  // Update: ホーム画面から「詳細を見る」を押した時の処理
+  const handleShowPlanDetail = (planId) => {
+    setFocusedPlanId(planId);
+    setActiveTab('plans');
+  };
+
+  const handleStartPlan = (plan) => {
+    setActivePlan(plan);
+    setActiveTab('map');
+    setCurrentFloor(plan.steps[0].floor);
+    setSelectedCategory(null);
+    setSelectedPinId(null);
+  };
+
+  const handleStopPlan = () => {
+    setActivePlan(null);
   };
 
   const calculateOptimizedPlan = () => {
@@ -397,8 +387,24 @@ export default function App() {
   };
 
   const createPath = (start, end) => {
-    return `M ${start.x} ${start.y} L 200 ${start.y} L 200 ${end.y} L ${end.x} ${end.y}`;
+    const startOffset = { x: start.x, y: start.y - 20 };
+    return `M ${startOffset.x} ${startOffset.y} L 200 ${startOffset.y} L 200 ${end.y} L ${end.x} ${end.y}`;
   };
+
+  const createPlanPath = (steps) => {
+    const floorSteps = steps.filter(s => s.floor === currentFloor);
+    if (floorSteps.length < 2) return '';
+    let path = `M ${floorSteps[0].x} ${floorSteps[0].y}`;
+    for (let i = 1; i < floorSteps.length; i++) {
+      path += ` L 200 ${floorSteps[i - 1].y} L 200 ${floorSteps[i].y} L ${floorSteps[i].x} ${floorSteps[i].y}`;
+    }
+    return path;
+  };
+
+  const getPos = (x, y) => ({
+    left: `${(x / MAP_WIDTH) * 100}%`,
+    top: `${(y / MAP_HEIGHT) * 100}%`
+  });
 
   const renderContent = () => {
     switch (activeTab) {
@@ -461,7 +467,11 @@ export default function App() {
               <h3 className="font-bold text-gray-800 mb-3 text-lg">おすすめプラン</h3>
               <div className="flex overflow-x-auto gap-4 pb-4 pr-6 scrollbar-hide">
                 {PLANS.map(plan => (
-                  <div key={plan.id} className="min-w-[260px] bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-40 relative overflow-hidden group cursor-pointer" onClick={() => setActiveTab('plans')}>
+                  <div
+                    key={plan.id}
+                    className="min-w-[260px] bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-40 relative overflow-hidden group cursor-pointer"
+                    onClick={() => handleShowPlanDetail(plan.id)} // Update: 詳細遷移ハンドラを使用
+                  >
                     <div className={`absolute top-0 right-0 w-24 h-24 rounded-full -mr-8 -mt-8 opacity-20 transition-transform group-hover:scale-110 ${plan.color.split(' ')[0]}`}></div>
                     <div>
                       <div className="flex gap-2 mb-2">{plan.tags.map(tag => (<span key={tag} className="text-[10px] font-bold px-2 py-1 bg-gray-100 rounded-full text-gray-600">{tag}</span>))}</div>
@@ -618,6 +628,11 @@ export default function App() {
                     {selectedCategory} ✕
                   </button>
                 )}
+                {activePlan && (
+                  <button onClick={handleStopPlan} className="bg-blue-600 text-white text-[10px] px-3 py-1.5 rounded-full shadow flex items-center gap-1">
+                    {activePlan.title.substring(0, 8)}... 終了 ✕
+                  </button>
+                )}
               </div>
               <div className="flex bg-gray-100 p-1 rounded-xl">
                 {['B1F', '1F', '2F'].map(floor => (
@@ -651,30 +666,53 @@ export default function App() {
                       <circle cx={currentLocation.x} cy={currentLocation.y} r="6" fill="#2563eb" stroke="white" strokeWidth="2" />
                     </>
                   )}
+                  {activePlan && (
+                    <>
+                      <style>{`@keyframes dash { to { stroke-dashoffset: -20; } } .animate-dash { animation: dash 1s linear infinite; }`}</style>
+                      <path d={createPlanPath(activePlan.steps)} stroke="#3b82f6" strokeWidth="5" fill="none" strokeDasharray="8 4" className="animate-dash" strokeLinecap="round" strokeLinejoin="round" />
+                    </>
+                  )}
                 </svg>
                 <div className="absolute inset-0 z-10 pointer-events-none">
                   {currentLocation.floor === currentFloor && (
-                    <div className="absolute flex flex-col items-center justify-center transform -translate-x-1/2 -translate-y-1/2 transition-all duration-500" style={{ left: currentLocation.x, top: currentLocation.y }}>
+                    <div className="absolute flex flex-col items-center justify-center transform -translate-x-1/2 -translate-y-1/2 transition-all duration-500 pointer-events-auto cursor-pointer" style={getPos(currentLocation.x, currentLocation.y)} onClick={() => setSelectedPinId(null)}>
                       <div className="w-12 h-12 bg-blue-600/20 rounded-full animate-ping absolute"></div>
                       <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white relative z-20"><Navigation size={14} className="text-white transform -rotate-45" fill="currentColor" /></div>
                       <div className="bg-gray-900 text-white text-[10px] font-bold px-2 py-1 rounded absolute top-8 mt-1 whitespace-nowrap shadow-lg z-30">現在地</div>
                     </div>
                   )}
-                  {MAP_PINS.filter(pin => pin.floor === currentFloor).map(pin => {
+
+                  {!activePlan && MAP_PINS.filter(pin => pin.floor === currentFloor).map(pin => {
                     const isTarget = selectedCategory === pin.category || selectedPinId === pin.id;
                     const opacity = (selectedCategory && !isTarget) ? 'opacity-30' : 'opacity-100';
                     const scale = isTarget ? 'scale-110 z-50' : 'scale-100 z-30';
                     const bounce = isTarget ? 'animate-bounce' : '';
                     return (
-                      <div key={pin.id} className={`absolute flex flex-col items-center transform -translate-x-1/2 -translate-y-full transition-all duration-300 pointer-events-auto cursor-pointer ${opacity} ${scale}`} style={{ left: pin.x, top: pin.y }} onClick={() => setSelectedPinId(pin.id)}>
+                      <div key={pin.id} className={`absolute flex flex-col items-center transform -translate-x-1/2 -translate-y-full transition-all duration-300 pointer-events-auto cursor-pointer ${opacity} ${scale}`} style={getPos(pin.x, pin.y)} onClick={() => setSelectedPinId(pin.id)}>
                         <div className={`relative ${bounce}`}><MapPin size={36} className="text-red-600 fill-white drop-shadow-md" /><div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-red-600 rounded-full"></div></div>
                         <span className="bg-white/95 px-2 py-1 rounded-md text-[9px] font-bold text-gray-800 shadow-md whitespace-nowrap mt-1 border border-gray-100">{pin.name}</span>
                       </div>
                     );
                   })}
+
+                  {activePlan && activePlan.steps
+                    .filter(step => step.floor === currentFloor)
+                    .map((step, idx) => (
+                      <div key={idx} className="absolute flex flex-col items-center transform -translate-x-1/2 -translate-y-full z-40" style={getPos(step.x, step.y)}>
+                        <div className="relative">
+                          <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-lg border-2 border-white">{idx + 1}</div>
+                          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-blue-600 rounded-full"></div>
+                        </div>
+                        <div className="mt-1 bg-white/95 px-2 py-1 rounded-md shadow-md border border-blue-100 text-center">
+                          <p className="text-[10px] font-bold text-gray-800 whitespace-nowrap">{step.label}</p>
+                          <p className="text-[9px] text-blue-600 font-bold">{step.time}</p>
+                        </div>
+                      </div>
+                    ))
+                  }
                 </div>
               </div>
-              <div className="mt-4 text-center"><p className="text-xs text-gray-400 mb-2">※ 1Fフロアの概略図です。ピンをタップすると経路を表示します。</p></div>
+              <div className="mt-4 text-center"><p className="text-xs text-gray-400 mb-2">※ 1Fフロアの概略図です。{activePlan ? 'プラン案内中' : 'ピンをタップすると経路を表示します。'}</p></div>
             </div>
           </div>
         );
@@ -710,7 +748,11 @@ export default function App() {
             <div className="p-6 bg-white sticky top-0 z-10 border-b border-gray-100"><h2 className="text-2xl font-bold text-gray-800 mb-2">おすすめプラン</h2><p className="text-gray-500 text-sm">空き時間に合わせた最適な過ごし方</p></div>
             <div className="p-4 space-y-6">
               {PLANS.map((plan) => (
-                <div key={plan.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <div
+                  key={plan.id}
+                  ref={el => planRefs.current[plan.id] = el}
+                  className={`bg-white rounded-2xl shadow-sm border overflow-hidden transition-all duration-500 ${focusedPlanId === plan.id ? 'border-blue-500 ring-4 ring-blue-100 scale-100' : 'border-gray-200'}`}
+                >
                   <div className={`p-4 ${plan.color} flex justify-between items-center`}><h3 className="font-bold text-lg">{plan.title}</h3><div className="bg-white/50 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold">{plan.duration}</div></div>
                   <div className="p-5">
                     <div className="relative border-l-2 border-gray-200 ml-3 my-2 space-y-6">
@@ -718,7 +760,7 @@ export default function App() {
                         <div key={idx} className="relative pl-6"><div className="absolute -left-[9px] top-1 w-4 h-4 rounded-full bg-white border-4 border-blue-400"></div><span className="text-xs font-bold text-gray-400 block mb-1">{step.time}</span><p className="text-sm font-medium text-gray-800">{step.label}</p></div>
                       ))}
                     </div>
-                    <button className="w-full mt-4 border border-gray-300 text-gray-600 font-bold py-2 rounded-xl hover:bg-gray-50 transition">このプランで案内開始</button>
+                    <button onClick={() => handleStartPlan(plan)} className="w-full mt-4 border border-gray-300 text-gray-600 font-bold py-2 rounded-xl hover:bg-gray-50 transition">このプランで案内開始</button>
                   </div>
                 </div>
               ))}
