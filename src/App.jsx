@@ -30,12 +30,13 @@ import {
   LogOut,
   X,
   ExternalLink,
-  Trash2
+  Trash2,
+  History // 追加
 } from 'lucide-react';
 
 /**
  * 名古屋駅スマートコンシェルジュ (Nagoya Station Smart Concierge)
- * Update: おすすめプラン詳細へのスムーズな遷移機能
+ * Update: 履歴機能の実装 & 案内開始時のハイライト解除
  */
 
 // --- 定数データ (Data) ---
@@ -167,7 +168,7 @@ const MenuItem = ({ icon, label, onClick }) => (
 );
 
 // サイドメニュー本体
-const SideMenu = ({ isOpen, onClose, onShowPopularSpots, onShowSavedCoupons }) => {
+const SideMenu = ({ isOpen, onClose, onShowPopularSpots, onShowSavedCoupons, onShowHistory }) => {
   if (!isOpen) return null;
 
   return (
@@ -193,7 +194,8 @@ const SideMenu = ({ isOpen, onClose, onShowPopularSpots, onShowSavedCoupons }) =
           <p className="text-xs font-bold text-gray-400 mb-2 px-3">メインメニュー</p>
           <MenuItem icon={<Star size={18} />} label="周辺の人気スポット" onClick={() => { onClose(); onShowPopularSpots(); }} />
           <MenuItem icon={<Ticket size={18} />} label="保存したクーポン" onClick={() => { onClose(); onShowSavedCoupons(); }} />
-          <MenuItem icon={<Clock size={18} />} label="履歴・最近見たプラン" onClick={onClose} />
+          {/* Update: 履歴メニューのOnClick追加 */}
+          <MenuItem icon={<History size={18} />} label="履歴・最近見たプラン" onClick={() => { onClose(); onShowHistory(); }} />
           <div className="h-px bg-gray-100 my-4 mx-3"></div>
           <p className="text-xs font-bold text-gray-400 mb-2 px-3">サポート・設定</p>
           <MenuItem icon={<Settings size={18} />} label="アプリ設定" onClick={onClose} />
@@ -210,7 +212,7 @@ const SideMenu = ({ isOpen, onClose, onShowPopularSpots, onShowSavedCoupons }) =
 };
 
 // 汎用リストモーダル
-const ListModal = ({ title, items, onClose, type, onRemove }) => (
+const ListModal = ({ title, items, onClose, type, onRemove, onNavigate }) => (
   <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
     <div className="bg-white rounded-2xl w-full max-w-sm max-h-[80vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
       <div className="p-4 border-b border-gray-100 flex justify-between items-center">
@@ -224,17 +226,23 @@ const ListModal = ({ title, items, onClose, type, onRemove }) => (
           items.map((item) => (
             <div key={item.id} className="bg-gray-50 p-3 rounded-xl border border-gray-100 flex gap-3 items-start relative group">
               <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center text-2xl shadow-sm flex-shrink-0">
-                {type === 'coupon' ? item.image : <MapPin className="text-red-500" />}
+                {type === 'coupon' ? item.image : type === 'history' ? <Clock size={20} className="text-blue-500" /> : <MapPin className="text-red-500" />}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
-                  <h4 className="font-bold text-gray-800 text-sm truncate">{item.name}</h4>
+                  {/* historyの場合はtitle、それ以外はname */}
+                  <h4 className="font-bold text-gray-800 text-sm truncate">{type === 'history' ? item.title : item.name}</h4>
                   {type === 'coupon' && (
                     <button onClick={() => onRemove(item.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>
                   )}
                 </div>
                 {type === 'coupon' && <p className="text-orange-500 font-bold text-xs">{item.discount}</p>}
-                <p className="text-xs text-gray-500 mt-1 leading-snug line-clamp-2">{item.description}</p>
+
+                {/* 履歴の場合は所要時間を表示 */}
+                {type === 'history' && <p className="text-xs text-gray-500 mt-1"><Clock size={10} className="inline mr-1" />{item.duration}</p>}
+
+                {type !== 'history' && <p className="text-xs text-gray-500 mt-1 leading-snug line-clamp-2">{item.description}</p>}
+
                 {type === 'spot' && (
                   <button onClick={() => window.open(item.link, '_blank')} className="mt-2 text-[10px] bg-blue-100 text-blue-600 px-2 py-1 rounded flex items-center gap-1 w-fit hover:bg-blue-200 transition">
                     公式サイトを見る <ExternalLink size={10} />
@@ -242,6 +250,15 @@ const ListModal = ({ title, items, onClose, type, onRemove }) => (
                 )}
                 {type === 'coupon' && (
                   <button className="mt-2 bg-gray-800 text-white text-[10px] px-3 py-1 rounded-full hover:bg-gray-600 transition">今すぐ利用する</button>
+                )}
+                {/* Update: 履歴用プラン移動ボタン */}
+                {type === 'history' && (
+                  <button
+                    onClick={() => onNavigate(item.id)}
+                    className="mt-2 bg-blue-600 text-white text-[10px] px-3 py-1 rounded-full hover:bg-blue-700 transition flex items-center gap-1 w-fit"
+                  >
+                    プランに移動 <ArrowRight size={10} />
+                  </button>
                 )}
               </div>
             </div>
@@ -288,13 +305,16 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedPinId, setSelectedPinId] = useState(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [activeModal, setActiveModal] = useState(null);
+  const [activeModal, setActiveModal] = useState(null); // 'popular' | 'saved' | 'history'
   const [savedCoupons, setSavedCoupons] = useState([]);
+
+  // Update: 履歴プラン管理
+  const [historyPlans, setHistoryPlans] = useState([]);
 
   // 案内中のプラン
   const [activePlan, setActivePlan] = useState(null);
 
-  // Update: フォーカスするプランIDとRef
+  // フォーカスするプランIDとRef
   const [focusedPlanId, setFocusedPlanId] = useState(null);
   const planRefs = useRef({});
 
@@ -308,10 +328,9 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Update: プランタブに遷移した際に該当プランまでスクロール
+  // プランタブに遷移した際に該当プランまでスクロール
   useEffect(() => {
     if (activeTab === 'plans' && focusedPlanId && planRefs.current[focusedPlanId]) {
-      // 描画完了を少し待ってからスクロール
       setTimeout(() => {
         planRefs.current[focusedPlanId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 100);
@@ -339,18 +358,32 @@ export default function App() {
     }
   };
 
-  // Update: ホーム画面から「詳細を見る」を押した時の処理
   const handleShowPlanDetail = (planId) => {
     setFocusedPlanId(planId);
     setActiveTab('plans');
   };
 
   const handleStartPlan = (plan) => {
+    // Update: 履歴に追加 (重複排除して先頭に追加)
+    setHistoryPlans(prev => {
+      const filtered = prev.filter(p => p.id !== plan.id);
+      return [plan, ...filtered];
+    });
+
+    // Update: 強調表示（ハイライト）を解除
+    setFocusedPlanId(null);
+
     setActivePlan(plan);
     setActiveTab('map');
     setCurrentFloor(plan.steps[0].floor);
     setSelectedCategory(null);
     setSelectedPinId(null);
+  };
+
+  // Update: 履歴モーダルからの遷移処理
+  const handleHistoryNavigate = (planId) => {
+    setActiveModal(null); // モーダルを閉じる
+    handleShowPlanDetail(planId); // 詳細へ移動
   };
 
   const handleStopPlan = () => {
@@ -470,7 +503,7 @@ export default function App() {
                   <div
                     key={plan.id}
                     className="min-w-[260px] bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-40 relative overflow-hidden group cursor-pointer"
-                    onClick={() => handleShowPlanDetail(plan.id)} // Update: 詳細遷移ハンドラを使用
+                    onClick={() => handleShowPlanDetail(plan.id)}
                   >
                     <div className={`absolute top-0 right-0 w-24 h-24 rounded-full -mr-8 -mt-8 opacity-20 transition-transform group-hover:scale-110 ${plan.color.split(' ')[0]}`}></div>
                     <div>
@@ -781,6 +814,7 @@ export default function App() {
         onClose={() => setIsMenuOpen(false)}
         onShowPopularSpots={() => setActiveModal('popular')}
         onShowSavedCoupons={() => setActiveModal('saved')}
+        onShowHistory={() => setActiveModal('history')}
       />
 
       {activeModal === 'popular' && (
@@ -799,6 +833,17 @@ export default function App() {
           type="coupon"
           onClose={() => setActiveModal(null)}
           onRemove={handleRemoveCoupon}
+        />
+      )}
+
+      {/* Update: 履歴モーダルを追加 */}
+      {activeModal === 'history' && (
+        <ListModal
+          title="履歴・最近見たプラン"
+          items={historyPlans}
+          type="history"
+          onClose={() => setActiveModal(null)}
+          onNavigate={handleHistoryNavigate}
         />
       )}
 
