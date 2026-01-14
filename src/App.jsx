@@ -40,7 +40,7 @@ import {
 
 /**
  * 名古屋駅スマートコンシェルジュ (Nagoya Station Smart Concierge)
- * Update: 現在地からのプラン案内開始（スタート地点への誘導）
+ * Update: 滞在予測5秒カウント & プランの動的ソート演出
  */
 
 // --- 定数データ (Data) ---
@@ -474,6 +474,11 @@ export default function App() {
     ? { x: currentFocusArea.x, y: currentFocusArea.y, floor: currentFocusArea.floor } // プラン開始しても現在地は動かない
     : { x: currentFocusArea.x, y: currentFocusArea.y, floor: currentFocusArea.floor };
 
+  // Update: 滞在予測時間の演出用ステート
+  const [displayForecast, setDisplayForecast] = useState('--');
+  // Update: プランのソート完了フラグ
+  const [isPlanSorted, setIsPlanSorted] = useState(false);
+
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
@@ -487,6 +492,59 @@ export default function App() {
     }
   }, [activeTab, focusedPlanId]);
 
+  // Update: 滞在予測時間のカウント演出 (5秒)
+  // ソートされたプランを計算しておく
+  const sortedPlansForCalculation = [...PLANS].sort((a, b) => {
+    if (a.id === currentFocusArea.relatedPlanId) return -1;
+    if (b.id === currentFocusArea.relatedPlanId) return 1;
+    return 0;
+  });
+
+  useEffect(() => {
+    // 案内中や最適化結果がある場合は即時表示または固定
+    if (activePlan) {
+      setDisplayForecast('--');
+      return;
+    }
+    if (optimizationResult) {
+      setDisplayForecast(optimizationResult.remainingMinutes);
+      return;
+    }
+
+    // ホーム画面での自動提案時の演出
+    const topPlan = sortedPlansForCalculation[0];
+    let targetTime = '--';
+
+    if (topPlan) {
+      if (topPlan.duration.includes('時間')) {
+        const hours = parseInt(topPlan.duration);
+        targetTime = !isNaN(hours) ? hours * 60 : 90;
+      } else {
+        const match = topPlan.duration.match(/(\d+)/);
+        targetTime = match ? parseInt(match[1]) : 60;
+      }
+    }
+
+    // 演出開始 (Update: 63 counts * 80ms = approx 5s)
+    let count = 0;
+    const maxCount = 63;
+    const interval = setInterval(() => {
+      count++;
+      // ランダムな数字を表示 (30~180の間など)
+      setDisplayForecast(Math.floor(Math.random() * 150) + 30);
+
+      if (count >= maxCount) {
+        clearInterval(interval);
+        // カウント終了後にソートを有効化し、時間をセット
+        setIsPlanSorted(true);
+        setDisplayForecast(targetTime);
+      }
+    }, 80);
+
+    return () => clearInterval(interval);
+
+  }, [currentFocusArea, optimizationResult, activePlan]);
+
   const getCongestionInfo = (area) => {
     const zone = CONGESTION_ZONES[area.congestionIndex];
     if (zone.type === 'orange') return { label: '混雑', color: 'text-red-500' };
@@ -494,11 +552,8 @@ export default function App() {
     return { label: '空き', color: 'text-blue-500' };
   };
 
-  const sortedPlans = [...PLANS].sort((a, b) => {
-    if (a.id === currentFocusArea.relatedPlanId) return -1;
-    if (b.id === currentFocusArea.relatedPlanId) return 1;
-    return 0;
-  });
+  // Update: 表示するプランリスト（ソート完了前はデフォルト、完了後はソート済み）
+  const displayPlans = isPlanSorted ? sortedPlansForCalculation : PLANS;
 
   const formatTime = (date) => date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
   const triggerBeaconDemo = () => setShowBeaconDemo(true);
@@ -640,7 +695,11 @@ export default function App() {
                 </div>
                 <div className="mb-4 text-center bg-blue-50 py-3 rounded-xl border border-blue-100">
                   <p className="text-xs text-gray-500 mb-1 font-bold">滞在予測時間</p>
-                  <p className="text-3xl font-extrabold text-blue-600 tracking-tight">{optimizationResult ? optimizationResult.remainingMinutes : '--'} <span className="text-sm text-gray-500 ml-1 font-bold">分</span></p>
+                  {/* Update: カウント演出付きの時間を表示 */}
+                  <p className="text-3xl font-extrabold text-blue-600 tracking-tight">
+                    {displayForecast}
+                    <span className="text-sm text-gray-500 ml-1 font-bold">分</span>
+                  </p>
                 </div>
                 <div className="flex items-center text-sm text-gray-600 border-t pt-4">
                   <div className="flex-1 text-center"><p className="font-bold text-lg text-gray-900">{formatTime(now)}</p><p className="text-xs">現在時刻</p></div>
@@ -658,7 +717,8 @@ export default function App() {
             <div className="pl-6">
               <h3 className="font-bold text-gray-800 mb-3 text-lg">おすすめプラン</h3>
               <div className="flex overflow-x-auto gap-4 pb-4 pr-6 scrollbar-hide">
-                {sortedPlans.map(plan => (
+                {/* Update: ソート状態に応じたプランを表示 */}
+                {displayPlans.map(plan => (
                   <div key={plan.id} className="min-w-[260px] bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-40 relative overflow-hidden group cursor-pointer" onClick={() => handleShowPlanDetail(plan.id)}>
                     <div className={`absolute top-0 right-0 w-24 h-24 rounded-full -mr-8 -mt-8 opacity-20 transition-transform group-hover:scale-110 ${plan.color.split(' ')[0]}`}></div>
                     <div>
@@ -854,7 +914,7 @@ export default function App() {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                       />
-                      {/* Update: 現在地からスタート地点への線を描画 (同じフロアの場合) */}
+                      {/* 現在地からスタート地点への線 (同じフロアの場合) */}
                       {currentLocation.floor === activePlan.steps[0].floor && currentFloor === currentLocation.floor && (
                         <path
                           d={createPath(currentLocation, activePlan.steps[0])}
