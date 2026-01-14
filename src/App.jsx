@@ -31,12 +31,16 @@ import {
   X,
   ExternalLink,
   Trash2,
-  History // 追加
+  History,
+  MessageSquare,
+  Send,
+  Bot,
+  RefreshCw
 } from 'lucide-react';
 
 /**
  * 名古屋駅スマートコンシェルジュ (Nagoya Station Smart Concierge)
- * Update: 履歴機能の実装 & 案内開始時のハイライト解除
+ * Update: 現在地からのプラン案内開始（スタート地点への誘導）
  */
 
 // --- 定数データ (Data) ---
@@ -154,7 +158,158 @@ const MAP_PINS = [
   { id: 8, category: 'お土産', floor: 'B1F', x: 250, y: 150, name: '地下お土産売り場' },
 ];
 
+// 混雑エリアの定義
+const CONGESTION_ZONES = [
+  // 1F: 中央口付近 (混雑: オレンジ) -> Index 0
+  { x: 140, y: 230, r: 80, intensity: 0.6, floor: '1F', type: 'orange' },
+
+  // 1F: 太閤通口付近/新幹線改札前 (やや混雑: 黄色) -> Index 1
+  { x: 200, y: 500, r: 90, intensity: 0.6, floor: '1F', type: 'yellow' },
+
+  // 2F: 桜通口 (混雑: オレンジ) -> Index 2
+  { x: 200, y: 60, r: 90, intensity: 0.7, floor: '2F', type: 'orange' },
+
+  // B1F: タカシマヤ (混雑: オレンジ) -> Index 3
+  { x: 320, y: 300, r: 100, intensity: 0.8, floor: 'B1F', type: 'orange' },
+];
+
+// 注目エリアの定義
+const FOCUS_AREAS = [
+  { id: 'central', name: '中央口付近', relatedPlanId: 1, congestionIndex: 0, x: 200, y: 280, floor: '1F' },
+  { id: 'shinkansen', name: '新幹線改札前', relatedPlanId: 2, congestionIndex: 1, x: 80, y: 390, floor: '1F' },
+  { id: 'sakura', name: '桜通口付近', relatedPlanId: 3, congestionIndex: 2, x: 200, y: 60, floor: '2F' }
+];
+
 // --- コンポーネント (Components) ---
+
+// ChatBot UI
+const ChatBotModal = ({ isOpen, onClose, initialQuery }) => {
+  const [messages, setMessages] = useState([
+    { id: 1, text: 'こんにちは！名駅コンシェルジュAIです。\n駅構内や周辺のおすすめスポットをご案内します。', isBot: true }
+  ]);
+  const [inputText, setInputText] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    if (isOpen && initialQuery) {
+      handleSend(initialQuery);
+    }
+  }, [isOpen]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isTyping]);
+
+  const handleSend = async (text) => {
+    const userText = text || inputText;
+    if (!userText.trim()) return;
+
+    const newUserMsg = { id: Date.now(), text: userText, isBot: false };
+    setMessages(prev => [...prev, newUserMsg]);
+    setInputText('');
+    setIsTyping(true);
+
+    setTimeout(() => {
+      let botResponse = "申し訳ありません。その情報については現在確認中です。";
+
+      if (userText.includes("ランチ") || userText.includes("ご飯")) {
+        botResponse = "今の時間帯なら「うまいもん通り」がおすすめです。特に「スパゲッティハウス チャオ」のあんかけスパは名古屋名物として人気ですよ！";
+      } else if (userText.includes("お土産") || userText.includes("赤福")) {
+        botResponse = "お土産なら中央コンコースの「ギフトキヨスク」が品揃え豊富です。赤福やゆかりなどの定番は、朝10時前なら比較的並ばずに購入できます。";
+      } else if (userText.includes("出口") || userText.includes("迷った")) {
+        botResponse = "現在地はどちらですか？「金時計（桜通口）」なら東側、「銀時計（太閤通口）」なら西側（新幹線側）です。まずはどちらかの時計を目指すと分かりやすいですよ。";
+      } else if (userText.includes("トイレ")) {
+        botResponse = "1F中央コンコースの「金の時計」裏手、または「銀の時計」付近のエスカレーター横に公衆トイレがございます。";
+      } else if (userText.includes("コインロッカー")) {
+        botResponse = "コインロッカーをお探しですね。現在は「太閤通口（銀時計）」付近のロッカーに空きがあるようです。アプリ内の「ロッカーコンシェルジュ」もぜひ活用してください。";
+      } else {
+        botResponse = `「${userText}」についてですね。私の知識ベースを検索しましたが、詳細な情報が見当たりませんでした。案内所のスタッフにお繋ぎしましょうか？`;
+      }
+
+      setMessages(prev => [...prev, { id: Date.now() + 1, text: botResponse, isBot: true }]);
+      setIsTyping(false);
+    }, 1500);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-white w-full max-w-md h-[80vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+        {/* Header */}
+        <div className="bg-blue-600 p-4 flex justify-between items-center text-white shadow-md z-10">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+              <Bot size={20} />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm">名駅AIコンシェルジュ</h3>
+              <p className="text-[10px] text-blue-100 flex items-center gap-1">
+                <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                駅情報データベース接続中
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-full transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Chat Area */}
+        <div className="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-4">
+          {messages.map((msg) => (
+            <div key={msg.id} className={`flex ${msg.isBot ? 'justify-start' : 'justify-end'}`}>
+              <div className={`max-w-[80%] p-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm ${msg.isBot
+                  ? 'bg-white text-gray-800 rounded-tl-none border border-gray-100'
+                  : 'bg-blue-600 text-white rounded-tr-none'
+                }`}>
+                {msg.text}
+              </div>
+            </div>
+          ))}
+          {isTyping && (
+            <div className="flex justify-start">
+              <div className="bg-white p-3 rounded-2xl rounded-tl-none border border-gray-100 shadow-sm flex gap-1">
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150"></span>
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-300"></span>
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input Area */}
+        <div className="p-3 bg-white border-t border-gray-100">
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+            className="flex gap-2 items-center"
+          >
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="質問を入力してください..."
+              className="flex-1 bg-gray-100 border-none rounded-full px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+            <button
+              type="submit"
+              disabled={!inputText.trim() || isTyping}
+              className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors shadow-sm"
+            >
+              <Send size={18} className={inputText.trim() ? 'ml-0.5' : ''} />
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // サイドメニュー項目
 const MenuItem = ({ icon, label, onClick }) => (
@@ -194,7 +349,6 @@ const SideMenu = ({ isOpen, onClose, onShowPopularSpots, onShowSavedCoupons, onS
           <p className="text-xs font-bold text-gray-400 mb-2 px-3">メインメニュー</p>
           <MenuItem icon={<Star size={18} />} label="周辺の人気スポット" onClick={() => { onClose(); onShowPopularSpots(); }} />
           <MenuItem icon={<Ticket size={18} />} label="保存したクーポン" onClick={() => { onClose(); onShowSavedCoupons(); }} />
-          {/* Update: 履歴メニューのOnClick追加 */}
           <MenuItem icon={<History size={18} />} label="履歴・最近見たプラン" onClick={() => { onClose(); onShowHistory(); }} />
           <div className="h-px bg-gray-100 my-4 mx-3"></div>
           <p className="text-xs font-bold text-gray-400 mb-2 px-3">サポート・設定</p>
@@ -230,19 +384,14 @@ const ListModal = ({ title, items, onClose, type, onRemove, onNavigate }) => (
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
-                  {/* historyの場合はtitle、それ以外はname */}
                   <h4 className="font-bold text-gray-800 text-sm truncate">{type === 'history' ? item.title : item.name}</h4>
                   {type === 'coupon' && (
                     <button onClick={() => onRemove(item.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>
                   )}
                 </div>
                 {type === 'coupon' && <p className="text-orange-500 font-bold text-xs">{item.discount}</p>}
-
-                {/* 履歴の場合は所要時間を表示 */}
                 {type === 'history' && <p className="text-xs text-gray-500 mt-1"><Clock size={10} className="inline mr-1" />{item.duration}</p>}
-
                 {type !== 'history' && <p className="text-xs text-gray-500 mt-1 leading-snug line-clamp-2">{item.description}</p>}
-
                 {type === 'spot' && (
                   <button onClick={() => window.open(item.link, '_blank')} className="mt-2 text-[10px] bg-blue-100 text-blue-600 px-2 py-1 rounded flex items-center gap-1 w-fit hover:bg-blue-200 transition">
                     公式サイトを見る <ExternalLink size={10} />
@@ -251,7 +400,6 @@ const ListModal = ({ title, items, onClose, type, onRemove, onNavigate }) => (
                 {type === 'coupon' && (
                   <button className="mt-2 bg-gray-800 text-white text-[10px] px-3 py-1 rounded-full hover:bg-gray-600 transition">今すぐ利用する</button>
                 )}
-                {/* Update: 履歴用プラン移動ボタン */}
                 {type === 'history' && (
                   <button
                     onClick={() => onNavigate(item.id)}
@@ -305,30 +453,32 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedPinId, setSelectedPinId] = useState(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [activeModal, setActiveModal] = useState(null); // 'popular' | 'saved' | 'history'
+  const [activeModal, setActiveModal] = useState(null);
   const [savedCoupons, setSavedCoupons] = useState([]);
-
-  // Update: 履歴プラン管理
   const [historyPlans, setHistoryPlans] = useState([]);
-
-  // 案内中のプラン
   const [activePlan, setActivePlan] = useState(null);
-
-  // フォーカスするプランIDとRef
   const [focusedPlanId, setFocusedPlanId] = useState(null);
+
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [initialChatQuery, setInitialChatQuery] = useState('');
+
+  const [currentFocusArea, setCurrentFocusArea] = useState(() => {
+    const randomIndex = Math.floor(Math.random() * FOCUS_AREAS.length);
+    return FOCUS_AREAS[randomIndex];
+  });
+
   const planRefs = useRef({});
 
-  const baseLocation = { x: 200, y: 300, floor: '1F' };
+  // Update: 現在地を「現在のステータス」の場所に合わせる
   const currentLocation = activePlan
-    ? { x: activePlan.steps[0].x, y: activePlan.steps[0].y, floor: activePlan.steps[0].floor }
-    : baseLocation;
+    ? { x: currentFocusArea.x, y: currentFocusArea.y, floor: currentFocusArea.floor } // プラン開始しても現在地は動かない
+    : { x: currentFocusArea.x, y: currentFocusArea.y, floor: currentFocusArea.floor };
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // プランタブに遷移した際に該当プランまでスクロール
   useEffect(() => {
     if (activeTab === 'plans' && focusedPlanId && planRefs.current[focusedPlanId]) {
       setTimeout(() => {
@@ -336,6 +486,19 @@ export default function App() {
       }, 100);
     }
   }, [activeTab, focusedPlanId]);
+
+  const getCongestionInfo = (area) => {
+    const zone = CONGESTION_ZONES[area.congestionIndex];
+    if (zone.type === 'orange') return { label: '混雑', color: 'text-red-500' };
+    if (zone.type === 'yellow') return { label: '普通', color: 'text-yellow-600' };
+    return { label: '空き', color: 'text-blue-500' };
+  };
+
+  const sortedPlans = [...PLANS].sort((a, b) => {
+    if (a.id === currentFocusArea.relatedPlanId) return -1;
+    if (b.id === currentFocusArea.relatedPlanId) return 1;
+    return 0;
+  });
 
   const formatTime = (date) => date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
   const triggerBeaconDemo = () => setShowBeaconDemo(true);
@@ -353,8 +516,13 @@ export default function App() {
 
   const handleSearch = (e) => {
     if (e.key === 'Enter' && searchQuery.trim()) {
-      const url = `https://www.google.com/search?q=site:www.meieki.com+${encodeURIComponent(searchQuery)}`;
-      window.open(url, '_blank');
+      if (searchQuery.length > 50) {
+        alert('検索ワードが長すぎます。50文字以内で入力してください。');
+        return;
+      }
+      setInitialChatQuery(searchQuery);
+      setIsChatOpen(true);
+      setSearchQuery('');
     }
   };
 
@@ -364,31 +532,28 @@ export default function App() {
   };
 
   const handleStartPlan = (plan) => {
-    // Update: 履歴に追加 (重複排除して先頭に追加)
     setHistoryPlans(prev => {
       const filtered = prev.filter(p => p.id !== plan.id);
       return [plan, ...filtered];
     });
-
-    // Update: 強調表示（ハイライト）を解除
     setFocusedPlanId(null);
-
     setActivePlan(plan);
     setActiveTab('map');
-    setCurrentFloor(plan.steps[0].floor);
+
+    // Update: 案内開始時は現在地のあるフロアを表示する
+    // スタート地点ではなく、ユーザーがいる現在地のフロアを表示
+    setCurrentFloor(currentFocusArea.floor);
+
     setSelectedCategory(null);
     setSelectedPinId(null);
   };
 
-  // Update: 履歴モーダルからの遷移処理
   const handleHistoryNavigate = (planId) => {
-    setActiveModal(null); // モーダルを閉じる
-    handleShowPlanDetail(planId); // 詳細へ移動
+    setActiveModal(null);
+    handleShowPlanDetail(planId);
   };
 
-  const handleStopPlan = () => {
-    setActivePlan(null);
-  };
+  const handleStopPlan = () => setActivePlan(null);
 
   const calculateOptimizedPlan = () => {
     if (!targetTime) return;
@@ -451,27 +616,22 @@ export default function App() {
                   <h1 className="text-2xl font-bold flex items-center gap-2">名駅コンシェルジュ <Star size={16} className="text-yellow-300 fill-yellow-300" /></h1>
                   <p className="text-blue-100 text-sm">Welcome back!</p>
                 </div>
-                <div
-                  className="bg-white/20 p-2 rounded-full backdrop-blur-sm cursor-pointer hover:bg-white/30 transition-colors"
-                  onClick={() => setIsMenuOpen(true)}
-                >
-                  <Menu size={24} />
-                </div>
+                <div className="bg-white/20 p-2 rounded-full backdrop-blur-sm cursor-pointer hover:bg-white/30 transition-colors" onClick={() => setIsMenuOpen(true)}><Menu size={24} /></div>
               </div>
               <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 flex items-center gap-3 border border-white/20">
-                <Search className="text-blue-200" size={20} />
+                <MessageSquare className="text-blue-200" size={20} />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={handleSearch}
-                  placeholder="名駅ドットコム内を検索..."
+                  maxLength={50}
+                  placeholder="AIに質問... (例: おすすめランチ)"
                   className="bg-transparent text-white placeholder-blue-200 w-full outline-none"
                 />
               </div>
             </div>
 
-            {/* Current Status */}
             <div className="px-6">
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
                 <div className="flex justify-between items-center mb-4">
@@ -480,31 +640,26 @@ export default function App() {
                 </div>
                 <div className="mb-4 text-center bg-blue-50 py-3 rounded-xl border border-blue-100">
                   <p className="text-xs text-gray-500 mb-1 font-bold">滞在予測時間</p>
-                  <p className="text-3xl font-extrabold text-blue-600 tracking-tight">
-                    {optimizationResult ? optimizationResult.remainingMinutes : '--'}
-                    <span className="text-sm text-gray-500 ml-1 font-bold">分</span>
-                  </p>
+                  <p className="text-3xl font-extrabold text-blue-600 tracking-tight">{optimizationResult ? optimizationResult.remainingMinutes : '--'} <span className="text-sm text-gray-500 ml-1 font-bold">分</span></p>
                 </div>
                 <div className="flex items-center text-sm text-gray-600 border-t pt-4">
                   <div className="flex-1 text-center"><p className="font-bold text-lg text-gray-900">{formatTime(now)}</p><p className="text-xs">現在時刻</p></div>
                   <div className="h-10 w-px bg-gray-200"></div>
-                  <div className="flex-1 text-center"><p className="font-bold text-lg text-gray-900">混雑</p><p className="text-xs">中央口付近</p></div>
+                  <div className="flex-1 text-center">
+                    <p className={`font-bold text-lg ${getCongestionInfo(currentFocusArea).color}`}>{getCongestionInfo(currentFocusArea).label}</p>
+                    <p className="text-xs">{currentFocusArea.name}</p>
+                  </div>
                   <div className="h-10 w-px bg-gray-200"></div>
                   <div className="flex-1 text-center"><p className="font-bold text-lg text-gray-900">晴れ</p><p className="text-xs">名古屋市</p></div>
                 </div>
               </div>
             </div>
 
-            {/* Plans */}
             <div className="pl-6">
               <h3 className="font-bold text-gray-800 mb-3 text-lg">おすすめプラン</h3>
               <div className="flex overflow-x-auto gap-4 pb-4 pr-6 scrollbar-hide">
-                {PLANS.map(plan => (
-                  <div
-                    key={plan.id}
-                    className="min-w-[260px] bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-40 relative overflow-hidden group cursor-pointer"
-                    onClick={() => handleShowPlanDetail(plan.id)}
-                  >
+                {sortedPlans.map(plan => (
+                  <div key={plan.id} className="min-w-[260px] bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-40 relative overflow-hidden group cursor-pointer" onClick={() => handleShowPlanDetail(plan.id)}>
                     <div className={`absolute top-0 right-0 w-24 h-24 rounded-full -mr-8 -mt-8 opacity-20 transition-transform group-hover:scale-110 ${plan.color.split(' ')[0]}`}></div>
                     <div>
                       <div className="flex gap-2 mb-2">{plan.tags.map(tag => (<span key={tag} className="text-[10px] font-bold px-2 py-1 bg-gray-100 rounded-full text-gray-600">{tag}</span>))}</div>
@@ -517,7 +672,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Quick Actions */}
             <div className="px-6 grid grid-cols-4 gap-4">
               {[
                 { icon: <Utensils size={24} />, label: 'ランチ', color: 'bg-orange-100 text-orange-600' },
@@ -525,30 +679,16 @@ export default function App() {
                 { icon: <ShoppingBag size={24} />, label: 'お土産', color: 'bg-pink-100 text-pink-600' },
                 { icon: <Info size={24} />, label: '案内所', color: 'bg-blue-100 text-blue-600' },
               ].map((item, idx) => (
-                <div
-                  key={idx}
-                  className="flex flex-col items-center gap-2"
-                  onClick={() => {
-                    setSelectedCategory(item.label);
-                    setActiveTab('map');
-                    setCurrentFloor('1F');
-                  }}
-                >
-                  <div className={`${item.color} p-4 rounded-2xl shadow-sm active:scale-95 transition-transform cursor-pointer`}>
-                    {item.icon}
-                  </div>
+                <div key={idx} className="flex flex-col items-center gap-2" onClick={() => { setSelectedCategory(item.label); setActiveTab('map'); setCurrentFloor(currentLocation.floor); }}>
+                  <div className={`${item.color} p-4 rounded-2xl shadow-sm active:scale-95 transition-transform cursor-pointer`}>{item.icon}</div>
                   <span className="text-xs font-medium text-gray-600">{item.label}</span>
                 </div>
               ))}
             </div>
 
-            {/* Smart Timekeeper */}
             <div className="px-6">
               <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
-                <div className="bg-gray-50 p-3 border-b border-gray-100 flex items-center gap-2">
-                  <Calendar size={18} className="text-blue-600" />
-                  <h3 className="text-sm font-bold text-gray-700">次の予定から最適プラン作成</h3>
-                </div>
+                <div className="bg-gray-50 p-3 border-b border-gray-100 flex items-center gap-2"><Calendar size={18} className="text-blue-600" /><h3 className="text-sm font-bold text-gray-700">次の予定から最適プラン作成</h3></div>
                 {!optimizationResult ? (
                   <div className="p-4">
                     <p className="text-xs text-gray-500 mb-3">乗車予定を入力すると、最適な過ごし方を提案します</p>
@@ -559,7 +699,7 @@ export default function App() {
                       </div>
                       <div className="flex-[1.5] min-w-0 ml-2">
                         <label className="text-[10px] font-bold text-gray-400 block mb-1">行き先/駅名</label>
-                        <input type="text" placeholder="例: 東京駅" value={targetStation} onChange={(e) => setTargetStation(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm text-gray-800 focus:outline-none focus:border-blue-500" />
+                        <input type="text" placeholder="例: 東京駅" value={targetStation} onChange={(e) => setTargetStation(e.target.value)} maxLength={20} className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm text-gray-800 focus:outline-none focus:border-blue-500" />
                       </div>
                     </div>
                     <button onClick={calculateOptimizedPlan} className="w-full bg-blue-600 text-white font-bold py-2.5 rounded-xl text-sm shadow-sm active:scale-95 transition-transform">プランを提案する</button>
@@ -568,42 +708,25 @@ export default function App() {
                   <div className="p-0">
                     <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 relative">
                       <div className="flex items-center justify-between text-blue-900 mb-4">
-                        <div className="text-center">
-                          <p className="text-[10px] text-blue-400 font-bold mb-1">NOW</p>
-                          <p className="text-xl font-bold leading-none">{optimizationResult.currentTime}</p>
-                        </div>
+                        <div className="text-center"><p className="text-[10px] text-blue-400 font-bold mb-1">NOW</p><p className="text-xl font-bold leading-none">{optimizationResult.currentTime}</p></div>
                         <div className="flex-1 px-4 flex flex-col items-center">
-                          <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full text-white mb-1 shadow-sm ${optimizationResult.remainingMinutes > 30 ? 'bg-green-500' : optimizationResult.remainingMinutes > 15 ? 'bg-yellow-500' : 'bg-red-500'}`}>
-                            残り {optimizationResult.remainingMinutes}分
-                          </div>
-                          <div className="w-full h-1 bg-blue-200 rounded-full relative">
-                            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-blue-500 rounded-full"></div>
-                          </div>
+                          <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full text-white mb-1 shadow-sm ${optimizationResult.remainingMinutes > 30 ? 'bg-green-500' : optimizationResult.remainingMinutes > 15 ? 'bg-yellow-500' : 'bg-red-500'}`}>残り {optimizationResult.remainingMinutes}分</div>
+                          <div className="w-full h-1 bg-blue-200 rounded-full relative"><div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-blue-500 rounded-full"></div></div>
                           <p className="text-[10px] text-blue-400 mt-1">移動 15分</p>
                         </div>
-                        <div className="text-center">
-                          <p className="text-[10px] text-red-400 font-bold mb-1">LIMIT</p>
-                          <p className="text-xl font-bold leading-none text-red-500">{optimizationResult.limitTime}</p>
-                        </div>
+                        <div className="text-center"><p className="text-[10px] text-red-400 font-bold mb-1">LIMIT</p><p className="text-xl font-bold leading-none text-red-500">{optimizationResult.limitTime}</p></div>
                       </div>
                       <div className="bg-white p-3 rounded-xl shadow-sm border border-blue-100 flex items-start gap-3">
                         <div className="bg-blue-100 p-2 rounded-lg text-blue-600 mt-1"><Compass size={20} /></div>
-                        <div>
-                          <p className="text-xs font-bold text-blue-600 mb-1">おすすめの過ごし方</p>
-                          <p className="text-sm font-bold text-gray-800 leading-snug">{optimizationResult.recommendation}</p>
-                        </div>
+                        <div><p className="text-xs font-bold text-blue-600 mb-1">おすすめの過ごし方</p><p className="text-sm font-bold text-gray-800 leading-snug">{optimizationResult.recommendation}</p></div>
                       </div>
-                      <div className="mt-3 flex justify-between items-center border-t border-blue-100/50 pt-2">
-                        <p className="text-xs text-blue-800 font-bold flex items-center gap-1"><TrainFront size={14} /> {optimizationResult.departureTime}発 {optimizationResult.station}行</p>
-                        <button onClick={() => setOptimizationResult(null)} className="text-xs text-gray-400 underline">リセット</button>
-                      </div>
+                      <div className="mt-3 flex justify-between items-center border-t border-blue-100/50 pt-2"><p className="text-xs text-blue-800 font-bold flex items-center gap-1"><TrainFront size={14} /> {optimizationResult.departureTime}発 {optimizationResult.station}行</p><button onClick={() => setOptimizationResult(null)} className="text-xs text-gray-400 underline">リセット</button></div>
                     </div>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* 6. Smart Alert */}
             <div className="px-6">
               <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-100 rounded-2xl p-4 mb-4">
                 <div className="flex items-start gap-3">
@@ -611,15 +734,9 @@ export default function App() {
                   <div>
                     <h3 className="font-bold text-gray-800 text-sm mb-1">混雑検知: ぴよりんShop</h3>
                     <p className="text-xs text-gray-600 mb-2">現在、待機列が<span className="font-bold text-red-500">60分以上</span>発生しています。</p>
-                    <div
-                      className="bg-white p-3 rounded-xl border border-yellow-200 shadow-sm flex items-center gap-3 cursor-pointer hover:bg-yellow-50 transition-colors"
-                      onClick={() => window.open('https://market.jr-central.co.jp/shop/e/epiyoyaku/', '_blank')}
-                    >
+                    <div className="bg-white p-3 rounded-xl border border-yellow-200 shadow-sm flex items-center gap-3 cursor-pointer hover:bg-yellow-50 transition-colors" onClick={() => window.open('https://market.jr-central.co.jp/shop/e/epiyoyaku/', '_blank')}>
                       <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center text-xl flex-shrink-0">🐥</div>
-                      <div className="flex-1">
-                        <p className="font-bold text-gray-800 text-sm">スマートぴよ約</p>
-                        <p className="text-[10px] text-gray-500">並ばずに無人ロッカーで受取り</p>
-                      </div>
+                      <div className="flex-1"><p className="font-bold text-gray-800 text-sm">スマートぴよ約</p><p className="text-[10px] text-gray-500">並ばずに無人ロッカーで受取り</p></div>
                       <ChevronRight size={16} className="text-gray-400" />
                     </div>
                   </div>
@@ -627,7 +744,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* 7. Smart Services */}
             <div className="pl-6">
               <h3 className="font-bold text-gray-800 mb-3 text-lg flex items-center gap-2"><Zap size={18} className="text-yellow-500 fill-yellow-500" />スマート活用術</h3>
               <div className="flex overflow-x-auto gap-3 pb-4 pr-6 scrollbar-hide">
@@ -677,6 +793,17 @@ export default function App() {
             <div className="flex-1 overflow-auto p-4 relative bg-gray-100">
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 relative overflow-hidden flex flex-col" style={{ minHeight: '600px' }}>
                 <svg viewBox="0 0 400 600" className="w-full h-full absolute top-0 left-0 z-0 bg-gray-50">
+                  <defs>
+                    <radialGradient id="congestionGradientOrange" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+                      <stop offset="0%" stopColor="#f97316" stopOpacity="0.6" />
+                      <stop offset="100%" stopColor="#f97316" stopOpacity="0" />
+                    </radialGradient>
+                    <radialGradient id="congestionGradientYellow" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+                      <stop offset="0%" stopColor="#eab308" stopOpacity="0.6" />
+                      <stop offset="100%" stopColor="#eab308" stopOpacity="0" />
+                    </radialGradient>
+                  </defs>
+
                   <rect x="160" y="50" width="80" height="500" fill="#ffffff" stroke="#e5e7eb" strokeWidth="1" />
                   <rect x="20" y="20" width="360" height="100" rx="4" fill="#eff6ff" stroke="#bfdbfe" />
                   <text x="200" y="45" textAnchor="middle" fontSize="12" fill="#1e40af" fontWeight="bold">桜通口 (Gold Clock)</text>
@@ -692,6 +819,21 @@ export default function App() {
                   <text x="320" y="300" textAnchor="middle" fontSize="10" fill="#db2777" fontWeight="bold" style={{ writingMode: 'vertical-rl' }}>JR名古屋タカシマヤ</text>
                   <rect x="20" y="480" width="100" height="80" rx="4" fill="#ffedd5" stroke="#fed7aa" opacity="0.8" />
                   <text x="70" y="520" textAnchor="middle" fontSize="9" fill="#c2410c">うまいもん通り</text>
+
+                  {CONGESTION_ZONES
+                    .filter(zone => zone.floor === currentFloor)
+                    .map((zone, idx) => (
+                      <circle
+                        key={idx}
+                        cx={zone.x}
+                        cy={zone.y}
+                        r={zone.r}
+                        fill={zone.type === 'yellow' ? "url(#congestionGradientYellow)" : "url(#congestionGradientOrange)"}
+                        style={{ opacity: zone.intensity }}
+                      />
+                    ))
+                  }
+
                   {selectedPinId && (
                     <>
                       <style>{`@keyframes dash { to { stroke-dashoffset: -20; } } .animate-dash { animation: dash 1s linear infinite; }`}</style>
@@ -702,7 +844,29 @@ export default function App() {
                   {activePlan && (
                     <>
                       <style>{`@keyframes dash { to { stroke-dashoffset: -20; } } .animate-dash { animation: dash 1s linear infinite; }`}</style>
-                      <path d={createPlanPath(activePlan.steps)} stroke="#3b82f6" strokeWidth="5" fill="none" strokeDasharray="8 4" className="animate-dash" strokeLinecap="round" strokeLinejoin="round" />
+                      <path
+                        d={createPlanPath(activePlan.steps)}
+                        stroke="#3b82f6"
+                        strokeWidth="5"
+                        fill="none"
+                        strokeDasharray="8 4"
+                        className="animate-dash"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      {/* Update: 現在地からスタート地点への線を描画 (同じフロアの場合) */}
+                      {currentLocation.floor === activePlan.steps[0].floor && currentFloor === currentLocation.floor && (
+                        <path
+                          d={createPath(currentLocation, activePlan.steps[0])}
+                          stroke="#3b82f6"
+                          strokeWidth="5"
+                          fill="none"
+                          strokeDasharray="8 4"
+                          className="animate-dash"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      )}
                     </>
                   )}
                 </svg>
@@ -727,10 +891,9 @@ export default function App() {
                       </div>
                     );
                   })}
-
-                  {activePlan && activePlan.steps
-                    .filter(step => step.floor === currentFloor)
-                    .map((step, idx) => (
+                  {activePlan && activePlan.steps.map((step, idx) => {
+                    if (step.floor !== currentFloor) return null;
+                    return (
                       <div key={idx} className="absolute flex flex-col items-center transform -translate-x-1/2 -translate-y-full z-40" style={getPos(step.x, step.y)}>
                         <div className="relative">
                           <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-lg border-2 border-white">{idx + 1}</div>
@@ -741,11 +904,21 @@ export default function App() {
                           <p className="text-[9px] text-blue-600 font-bold">{step.time}</p>
                         </div>
                       </div>
-                    ))
+                    );
+                  })
                   }
                 </div>
               </div>
-              <div className="mt-4 text-center"><p className="text-xs text-gray-400 mb-2">※ 1Fフロアの概略図です。{activePlan ? 'プラン案内中' : 'ピンをタップすると経路を表示します。'}</p></div>
+
+              <div className="mt-4 px-2">
+                <div className="flex justify-between items-end mb-1">
+                  <span className="text-[10px] font-bold text-gray-500">空き</span>
+                  <span className="text-[10px] font-bold text-gray-500">混雑</span>
+                </div>
+                <div className="h-2 rounded-full w-full bg-gradient-to-r from-blue-400 via-yellow-400 to-orange-500"></div>
+                <p className="text-center text-[10px] text-gray-400 mt-2">※ リアルタイムの混雑状況（デモ）</p>
+              </div>
+
             </div>
           </div>
         );
@@ -781,11 +954,7 @@ export default function App() {
             <div className="p-6 bg-white sticky top-0 z-10 border-b border-gray-100"><h2 className="text-2xl font-bold text-gray-800 mb-2">おすすめプラン</h2><p className="text-gray-500 text-sm">空き時間に合わせた最適な過ごし方</p></div>
             <div className="p-4 space-y-6">
               {PLANS.map((plan) => (
-                <div
-                  key={plan.id}
-                  ref={el => planRefs.current[plan.id] = el}
-                  className={`bg-white rounded-2xl shadow-sm border overflow-hidden transition-all duration-500 ${focusedPlanId === plan.id ? 'border-blue-500 ring-4 ring-blue-100 scale-100' : 'border-gray-200'}`}
-                >
+                <div key={plan.id} ref={el => planRefs.current[plan.id] = el} className={`bg-white rounded-2xl shadow-sm border overflow-hidden transition-all duration-500 ${focusedPlanId === plan.id ? 'border-blue-500 ring-4 ring-blue-100 scale-100' : 'border-gray-200'}`}>
                   <div className={`p-4 ${plan.color} flex justify-between items-center`}><h3 className="font-bold text-lg">{plan.title}</h3><div className="bg-white/50 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold">{plan.duration}</div></div>
                   <div className="p-5">
                     <div className="relative border-l-2 border-gray-200 ml-3 my-2 space-y-6">
@@ -817,26 +986,20 @@ export default function App() {
         onShowHistory={() => setActiveModal('history')}
       />
 
+      <ChatBotModal
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        initialQuery={initialChatQuery}
+      />
+
       {activeModal === 'popular' && (
-        <ListModal
-          title="周辺の人気スポット"
-          items={POPULAR_SPOTS}
-          type="spot"
-          onClose={() => setActiveModal(null)}
-        />
+        <ListModal title="周辺の人気スポット" items={POPULAR_SPOTS} type="spot" onClose={() => setActiveModal(null)} />
       )}
 
       {activeModal === 'saved' && (
-        <ListModal
-          title="保存したクーポン"
-          items={savedCoupons}
-          type="coupon"
-          onClose={() => setActiveModal(null)}
-          onRemove={handleRemoveCoupon}
-        />
+        <ListModal title="保存したクーポン" items={savedCoupons} type="coupon" onClose={() => setActiveModal(null)} onRemove={handleRemoveCoupon} />
       )}
 
-      {/* Update: 履歴モーダルを追加 */}
       {activeModal === 'history' && (
         <ListModal
           title="履歴・最近見たプラン"
@@ -855,11 +1018,7 @@ export default function App() {
         ))}
       </div>
       {showBeaconDemo && (
-        <BeaconPopup
-          coupon={COUPONS[0]}
-          onClose={() => setShowBeaconDemo(false)}
-          onSave={handleSaveCoupon}
-        />
+        <BeaconPopup coupon={COUPONS[0]} onClose={() => setShowBeaconDemo(false)} onSave={handleSaveCoupon} />
       )}
     </div>
   );
