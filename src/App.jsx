@@ -40,7 +40,7 @@ import {
 
 /**
  * 名古屋駅スマートコンシェルジュ (Nagoya Station Smart Concierge)
- * Update: 滞在予測5秒カウント & プランの動的ソート演出
+ * Update: マップのアスペクト比固定によるピン位置ズレの完全修正
  */
 
 // --- 定数データ (Data) ---
@@ -68,7 +68,8 @@ const PLANS = [
     color: 'bg-pink-100 text-pink-800',
     steps: [
       { time: '11:00', label: '中央コンコースからスタート', floor: '1F', x: 200, y: 300 },
-      { time: '11:10', label: '「うまいもん通り」でひつまぶしランチ', floor: '1F', x: 80, y: 480 },
+      // Update: 座標修正
+      { time: '11:10', label: '「うまいもん通り」でひつまぶしランチ', floor: '1F', x: 70, y: 520 },
       { time: '12:00', label: 'JR名古屋タカシマヤへ移動', floor: '1F', x: 320, y: 300 },
       { time: '12:10', label: 'B1Fデパ地下で限定スイーツ探索', floor: 'B1F', x: 250, y: 150 },
     ]
@@ -140,14 +141,15 @@ const SMART_SERVICES = [
 const MAP_WIDTH = 400;
 const MAP_HEIGHT = 600;
 
+// Update: ピン位置の微調整 (SVGの矩形中心に合わせる)
 const MAP_PINS = [
   // 1F
-  { id: 1, category: 'ランチ', floor: '1F', x: 80, y: 480, name: 'うまいもん通り(太閤)' },
+  { id: 1, category: 'ランチ', floor: '1F', x: 70, y: 520, name: 'うまいもん通り(太閤)' }, // 中心へ修正
   { id: 2, category: 'カフェ', floor: '1F', x: 320, y: 150, name: 'カフェ・ド・クリエ' },
   { id: 3, category: 'お土産', floor: '1F', x: 280, y: 300, name: 'ギフトキヨスク' },
   { id: 4, category: '案内所', floor: '1F', x: 200, y: 280, name: '総合案内所' },
-  { id: 9, category: '待ち合わせ', floor: '1F', x: 200, y: 80, name: '金の時計' },
-  { id: 10, category: '待ち合わせ', floor: '1F', x: 200, y: 520, name: '銀の時計' },
+  { id: 9, category: '待ち合わせ', floor: '1F', x: 200, y: 70, name: '金の時計' }, // 中心へ修正
+  { id: 10, category: '待ち合わせ', floor: '1F', x: 200, y: 530, name: '銀の時計' }, // 中心へ修正
 
   // 2F
   { id: 5, category: 'カフェ', floor: '2F', x: 300, y: 200, name: 'タカシマヤ カフェ' },
@@ -469,14 +471,11 @@ export default function App() {
 
   const planRefs = useRef({});
 
-  // Update: 現在地を「現在のステータス」の場所に合わせる
   const currentLocation = activePlan
-    ? { x: currentFocusArea.x, y: currentFocusArea.y, floor: currentFocusArea.floor } // プラン開始しても現在地は動かない
+    ? { x: currentFocusArea.x, y: currentFocusArea.y, floor: currentFocusArea.floor }
     : { x: currentFocusArea.x, y: currentFocusArea.y, floor: currentFocusArea.floor };
 
-  // Update: 滞在予測時間の演出用ステート
   const [displayForecast, setDisplayForecast] = useState('--');
-  // Update: プランのソート完了フラグ
   const [isPlanSorted, setIsPlanSorted] = useState(false);
 
   useEffect(() => {
@@ -492,8 +491,6 @@ export default function App() {
     }
   }, [activeTab, focusedPlanId]);
 
-  // Update: 滞在予測時間のカウント演出 (5秒)
-  // ソートされたプランを計算しておく
   const sortedPlansForCalculation = [...PLANS].sort((a, b) => {
     if (a.id === currentFocusArea.relatedPlanId) return -1;
     if (b.id === currentFocusArea.relatedPlanId) return 1;
@@ -501,7 +498,6 @@ export default function App() {
   });
 
   useEffect(() => {
-    // 案内中や最適化結果がある場合は即時表示または固定
     if (activePlan) {
       setDisplayForecast('--');
       return;
@@ -511,7 +507,6 @@ export default function App() {
       return;
     }
 
-    // ホーム画面での自動提案時の演出
     const topPlan = sortedPlansForCalculation[0];
     let targetTime = '--';
 
@@ -525,17 +520,14 @@ export default function App() {
       }
     }
 
-    // 演出開始 (Update: 63 counts * 80ms = approx 5s)
     let count = 0;
     const maxCount = 63;
     const interval = setInterval(() => {
       count++;
-      // ランダムな数字を表示 (30~180の間など)
       setDisplayForecast(Math.floor(Math.random() * 150) + 30);
 
       if (count >= maxCount) {
         clearInterval(interval);
-        // カウント終了後にソートを有効化し、時間をセット
         setIsPlanSorted(true);
         setDisplayForecast(targetTime);
       }
@@ -552,7 +544,6 @@ export default function App() {
     return { label: '空き', color: 'text-blue-500' };
   };
 
-  // Update: 表示するプランリスト（ソート完了前はデフォルト、完了後はソート済み）
   const displayPlans = isPlanSorted ? sortedPlansForCalculation : PLANS;
 
   const formatTime = (date) => date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
@@ -596,7 +587,6 @@ export default function App() {
     setActiveTab('map');
 
     // Update: 案内開始時は現在地のあるフロアを表示する
-    // スタート地点ではなく、ユーザーがいる現在地のフロアを表示
     setCurrentFloor(currentFocusArea.floor);
 
     setSelectedCategory(null);
@@ -695,7 +685,6 @@ export default function App() {
                 </div>
                 <div className="mb-4 text-center bg-blue-50 py-3 rounded-xl border border-blue-100">
                   <p className="text-xs text-gray-500 mb-1 font-bold">滞在予測時間</p>
-                  {/* Update: カウント演出付きの時間を表示 */}
                   <p className="text-3xl font-extrabold text-blue-600 tracking-tight">
                     {displayForecast}
                     <span className="text-sm text-gray-500 ml-1 font-bold">分</span>
@@ -717,7 +706,6 @@ export default function App() {
             <div className="pl-6">
               <h3 className="font-bold text-gray-800 mb-3 text-lg">おすすめプラン</h3>
               <div className="flex overflow-x-auto gap-4 pb-4 pr-6 scrollbar-hide">
-                {/* Update: ソート状態に応じたプランを表示 */}
                 {displayPlans.map(plan => (
                   <div key={plan.id} className="min-w-[260px] bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-40 relative overflow-hidden group cursor-pointer" onClick={() => handleShowPlanDetail(plan.id)}>
                     <div className={`absolute top-0 right-0 w-24 h-24 rounded-full -mr-8 -mt-8 opacity-20 transition-transform group-hover:scale-110 ${plan.color.split(' ')[0]}`}></div>
@@ -851,7 +839,8 @@ export default function App() {
             </div>
 
             <div className="flex-1 overflow-auto p-4 relative bg-gray-100">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 relative overflow-hidden flex flex-col" style={{ minHeight: '600px' }}>
+              {/* Update: マップのアスペクト比を2:3に固定し、w-fullで親幅に合わせる */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 relative overflow-hidden flex flex-col w-full aspect-[2/3]">
                 <svg viewBox="0 0 400 600" className="w-full h-full absolute top-0 left-0 z-0 bg-gray-50">
                   <defs>
                     <radialGradient id="congestionGradientOrange" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
@@ -914,7 +903,6 @@ export default function App() {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                       />
-                      {/* 現在地からスタート地点への線 (同じフロアの場合) */}
                       {currentLocation.floor === activePlan.steps[0].floor && currentFloor === currentLocation.floor && (
                         <path
                           d={createPath(currentLocation, activePlan.steps[0])}
