@@ -40,7 +40,7 @@ import {
 
 /**
  * 名古屋駅スマートコンシェルジュ (Nagoya Station Smart Concierge)
- * Update: マップのアスペクト比固定によるピン位置ズレの完全修正
+ * Update: ホーム検索バーへの送信ボタン追加
  */
 
 // --- 定数データ (Data) ---
@@ -68,8 +68,7 @@ const PLANS = [
     color: 'bg-pink-100 text-pink-800',
     steps: [
       { time: '11:00', label: '中央コンコースからスタート', floor: '1F', x: 200, y: 300 },
-      // Update: 座標修正
-      { time: '11:10', label: '「うまいもん通り」でひつまぶしランチ', floor: '1F', x: 70, y: 520 },
+      { time: '11:10', label: '「うまいもん通り」でひつまぶしランチ', floor: '1F', x: 80, y: 480 },
       { time: '12:00', label: 'JR名古屋タカシマヤへ移動', floor: '1F', x: 320, y: 300 },
       { time: '12:10', label: 'B1Fデパ地下で限定スイーツ探索', floor: 'B1F', x: 250, y: 150 },
     ]
@@ -141,15 +140,14 @@ const SMART_SERVICES = [
 const MAP_WIDTH = 400;
 const MAP_HEIGHT = 600;
 
-// Update: ピン位置の微調整 (SVGの矩形中心に合わせる)
 const MAP_PINS = [
   // 1F
-  { id: 1, category: 'ランチ', floor: '1F', x: 70, y: 520, name: 'うまいもん通り(太閤)' }, // 中心へ修正
+  { id: 1, category: 'ランチ', floor: '1F', x: 80, y: 480, name: 'うまいもん通り(太閤)' },
   { id: 2, category: 'カフェ', floor: '1F', x: 320, y: 150, name: 'カフェ・ド・クリエ' },
   { id: 3, category: 'お土産', floor: '1F', x: 280, y: 300, name: 'ギフトキヨスク' },
   { id: 4, category: '案内所', floor: '1F', x: 200, y: 280, name: '総合案内所' },
-  { id: 9, category: '待ち合わせ', floor: '1F', x: 200, y: 70, name: '金の時計' }, // 中心へ修正
-  { id: 10, category: '待ち合わせ', floor: '1F', x: 200, y: 530, name: '銀の時計' }, // 中心へ修正
+  { id: 9, category: '待ち合わせ', floor: '1F', x: 200, y: 80, name: '金の時計' },
+  { id: 10, category: '待ち合わせ', floor: '1F', x: 200, y: 520, name: '銀の時計' },
 
   // 2F
   { id: 5, category: 'カフェ', floor: '2F', x: 300, y: 200, name: 'タカシマヤ カフェ' },
@@ -560,8 +558,9 @@ export default function App() {
 
   const handleRemoveCoupon = (id) => setSavedCoupons(savedCoupons.filter(c => c.id !== id));
 
-  const handleSearch = (e) => {
-    if (e.key === 'Enter' && searchQuery.trim()) {
+  // Update: 検索処理 (送信ボタン対応)
+  const executeSearch = () => {
+    if (searchQuery.trim()) {
       if (searchQuery.length > 50) {
         alert('検索ワードが長すぎます。50文字以内で入力してください。');
         return;
@@ -571,6 +570,15 @@ export default function App() {
       setSearchQuery('');
     }
   };
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      executeSearch();
+    }
+  };
+
+  // 後方互換のため残す（JSX内の参照を消すなら不要）
+  const handleSearch = handleSearchKeyDown;
 
   const handleShowPlanDetail = (planId) => {
     setFocusedPlanId(planId);
@@ -585,10 +593,7 @@ export default function App() {
     setFocusedPlanId(null);
     setActivePlan(plan);
     setActiveTab('map');
-
-    // Update: 案内開始時は現在地のあるフロアを表示する
     setCurrentFloor(currentFocusArea.floor);
-
     setSelectedCategory(null);
     setSelectedPinId(null);
   };
@@ -669,11 +674,15 @@ export default function App() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={handleSearch}
+                  onKeyDown={handleSearchKeyDown}
                   maxLength={50}
                   placeholder="AIに質問... (例: おすすめランチ)"
                   className="bg-transparent text-white placeholder-blue-200 w-full outline-none"
                 />
+                {/* Update: 送信ボタン追加 */}
+                <button onClick={executeSearch} disabled={!searchQuery.trim()} className="text-white hover:text-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                  <Send size={20} />
+                </button>
               </div>
             </div>
 
@@ -839,8 +848,7 @@ export default function App() {
             </div>
 
             <div className="flex-1 overflow-auto p-4 relative bg-gray-100">
-              {/* Update: マップのアスペクト比を2:3に固定し、w-fullで親幅に合わせる */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 relative overflow-hidden flex flex-col w-full aspect-[2/3]">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 relative overflow-hidden flex flex-col" style={{ minHeight: '600px' }}>
                 <svg viewBox="0 0 400 600" className="w-full h-full absolute top-0 left-0 z-0 bg-gray-50">
                   <defs>
                     <radialGradient id="congestionGradientOrange" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
@@ -903,6 +911,7 @@ export default function App() {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                       />
+                      {/* 現在地からスタート地点への線 (同じフロアの場合) */}
                       {currentLocation.floor === activePlan.steps[0].floor && currentFloor === currentLocation.floor && (
                         <path
                           d={createPath(currentLocation, activePlan.steps[0])}
