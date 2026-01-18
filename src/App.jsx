@@ -40,7 +40,7 @@ import {
 
 /**
  * 名古屋駅スマートコンシェルジュ (Nagoya Station Smart Concierge)
- * Update: ホーム検索バーへの送信ボタン追加
+ * Update: マップピン位置の微調整 & 注記の追加
  */
 
 // --- 定数データ (Data) ---
@@ -68,7 +68,7 @@ const PLANS = [
     color: 'bg-pink-100 text-pink-800',
     steps: [
       { time: '11:00', label: '中央コンコースからスタート', floor: '1F', x: 200, y: 300 },
-      { time: '11:10', label: '「うまいもん通り」でひつまぶしランチ', floor: '1F', x: 80, y: 480 },
+      { time: '11:10', label: '「うまいもん通り」でひつまぶしランチ', floor: '1F', x: 70, y: 520 },
       { time: '12:00', label: 'JR名古屋タカシマヤへ移動', floor: '1F', x: 320, y: 300 },
       { time: '12:10', label: 'B1Fデパ地下で限定スイーツ探索', floor: 'B1F', x: 250, y: 150 },
     ]
@@ -140,22 +140,23 @@ const SMART_SERVICES = [
 const MAP_WIDTH = 400;
 const MAP_HEIGHT = 600;
 
+// Update: ピン位置の修正（建物・エリアの中心に来るように調整）
 const MAP_PINS = [
   // 1F
-  { id: 1, category: 'ランチ', floor: '1F', x: 80, y: 480, name: 'うまいもん通り(太閤)' },
-  { id: 2, category: 'カフェ', floor: '1F', x: 320, y: 150, name: 'カフェ・ド・クリエ' },
-  { id: 3, category: 'お土産', floor: '1F', x: 280, y: 300, name: 'ギフトキヨスク' },
-  { id: 4, category: '案内所', floor: '1F', x: 200, y: 280, name: '総合案内所' },
-  { id: 9, category: '待ち合わせ', floor: '1F', x: 200, y: 80, name: '金の時計' },
-  { id: 10, category: '待ち合わせ', floor: '1F', x: 200, y: 520, name: '銀の時計' },
+  { id: 1, category: 'ランチ', floor: '1F', x: 70, y: 520, name: 'うまいもん通り(太閤)' }, // 左下エリア内
+  { id: 2, category: 'カフェ', floor: '1F', x: 300, y: 180, name: 'カフェ・ド・クリエ' }, // 右側エリア内へ移動
+  { id: 3, category: 'お土産', floor: '1F', x: 280, y: 280, name: 'ギフトキヨスク' }, // 右側エリア内
+  { id: 4, category: '案内所', floor: '1F', x: 200, y: 280, name: '総合案内所' }, // 中央コンコース上
+  { id: 9, category: '待ち合わせ', floor: '1F', x: 200, y: 70, name: '金の時計' }, // 桜通口エリア中心
+  { id: 10, category: '待ち合わせ', floor: '1F', x: 200, y: 530, name: '銀の時計' }, // 太閤通口エリア中心
 
   // 2F
-  { id: 5, category: 'カフェ', floor: '2F', x: 300, y: 200, name: 'タカシマヤ カフェ' },
-  { id: 6, category: 'ランチ', floor: '2F', x: 100, y: 400, name: 'レストラン街' },
+  { id: 5, category: 'カフェ', floor: '2F', x: 320, y: 220, name: 'タカシマヤ カフェ' }, // 右側エリア内
+  { id: 6, category: 'ランチ', floor: '2F', x: 80, y: 390, name: 'レストラン街' }, // 左側エリア付近
 
   // B1F
-  { id: 7, category: 'ランチ', floor: 'B1F', x: 100, y: 450, name: 'エスカ地下街' },
-  { id: 8, category: 'お土産', floor: 'B1F', x: 250, y: 150, name: '地下お土産売り場' },
+  { id: 7, category: 'ランチ', floor: 'B1F', x: 70, y: 520, name: 'エスカ地下街' }, // 太閤通口側地下
+  { id: 8, category: 'お土産', floor: 'B1F', x: 320, y: 300, name: '地下お土産売り場' }, // 高島屋地下
 ];
 
 // 混雑エリアの定義
@@ -558,7 +559,18 @@ export default function App() {
 
   const handleRemoveCoupon = (id) => setSavedCoupons(savedCoupons.filter(c => c.id !== id));
 
-  // Update: 検索処理 (送信ボタン対応)
+  const handleSearch = (e) => {
+    if (e.key === 'Enter' && searchQuery.trim()) {
+      if (searchQuery.length > 50) {
+        alert('検索ワードが長すぎます。50文字以内で入力してください。');
+        return;
+      }
+      setInitialChatQuery(searchQuery);
+      setIsChatOpen(true);
+      setSearchQuery('');
+    }
+  };
+
   const executeSearch = () => {
     if (searchQuery.trim()) {
       if (searchQuery.length > 50) {
@@ -576,9 +588,6 @@ export default function App() {
       executeSearch();
     }
   };
-
-  // 後方互換のため残す（JSX内の参照を消すなら不要）
-  const handleSearch = handleSearchKeyDown;
 
   const handleShowPlanDetail = (planId) => {
     setFocusedPlanId(planId);
@@ -679,7 +688,6 @@ export default function App() {
                   placeholder="AIに質問... (例: おすすめランチ)"
                   className="bg-transparent text-white placeholder-blue-200 w-full outline-none"
                 />
-                {/* Update: 送信ボタン追加 */}
                 <button onClick={executeSearch} disabled={!searchQuery.trim()} className="text-white hover:text-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                   <Send size={20} />
                 </button>
@@ -911,7 +919,6 @@ export default function App() {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                       />
-                      {/* 現在地からスタート地点への線 (同じフロアの場合) */}
                       {currentLocation.floor === activePlan.steps[0].floor && currentFloor === currentLocation.floor && (
                         <path
                           d={createPath(currentLocation, activePlan.steps[0])}
@@ -974,6 +981,7 @@ export default function App() {
                 </div>
                 <div className="h-2 rounded-full w-full bg-gradient-to-r from-blue-400 via-yellow-400 to-orange-500"></div>
                 <p className="text-center text-[10px] text-gray-400 mt-2">※ リアルタイムの混雑状況（デモ）</p>
+                <p className="text-center text-[10px] text-gray-400 mt-1">※ これはデモ用のマップであり、正確な縮尺・配置ではありません。</p>
               </div>
 
             </div>
