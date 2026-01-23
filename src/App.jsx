@@ -36,12 +36,13 @@ import {
   Send,
   Bot,
   RefreshCw,
-  MapPin as MapIcon // 追加
+  MapPin as MapIcon,
+  Bluetooth // 追加
 } from 'lucide-react';
 
 /**
  * 名古屋駅スマートコンシェルジュ (Nagoya Station Smart Concierge)
- * Update: 初回アクセス時の位置情報許可フロー & 丁寧な離脱画面の実装
+ * Update: 初回許可画面のメッセージ修正（位置情報+Bluetooth / デモ版注記）
  */
 
 // --- 定数データ (Data) ---
@@ -143,20 +144,20 @@ const MAP_HEIGHT = 600;
 
 const MAP_PINS = [
   // 1F
-  { id: 1, category: 'ランチ', floor: '1F', x: 70, y: 520, name: 'うまいもん通り(太閤)' },
-  { id: 2, category: 'カフェ', floor: '1F', x: 320, y: 150, name: 'カフェ・ド・クリエ' },
-  { id: 3, category: 'お土産', floor: '1F', x: 280, y: 300, name: 'ギフトキヨスク' },
+  { id: 1, category: 'ランチ', floor: '1F', x: 70, y: 520, name: 'うまいもん通り' },
+  { id: 2, category: 'カフェ', floor: '1F', x: 300, y: 180, name: 'カフェ・ド・クリエ' },
+  { id: 3, category: 'お土産', floor: '1F', x: 280, y: 280, name: 'ギフトキヨスク' },
   { id: 4, category: '案内所', floor: '1F', x: 200, y: 280, name: '総合案内所' },
-  { id: 9, category: '待ち合わせ', floor: '1F', x: 200, y: 80, name: '金の時計' },
-  { id: 10, category: '待ち合わせ', floor: '1F', x: 200, y: 520, name: '銀の時計' },
+  { id: 9, category: '待ち合わせ', floor: '1F', x: 200, y: 70, name: '金の時計' },
+  { id: 10, category: '待ち合わせ', floor: '1F', x: 200, y: 530, name: '銀の時計' },
 
   // 2F
-  { id: 5, category: 'カフェ', floor: '2F', x: 300, y: 200, name: 'タカシマヤ カフェ' },
-  { id: 6, category: 'ランチ', floor: '2F', x: 100, y: 400, name: 'レストラン街' },
+  { id: 5, category: 'カフェ', floor: '2F', x: 320, y: 220, name: 'タカシマヤ カフェ' },
+  { id: 6, category: 'ランチ', floor: '2F', x: 100, y: 390, name: 'レストラン街' },
 
   // B1F
   { id: 7, category: 'ランチ', floor: 'B1F', x: 100, y: 450, name: 'エスカ地下街' },
-  { id: 8, category: 'お土産', floor: 'B1F', x: 250, y: 150, name: '地下お土産売り場' },
+  { id: 8, category: 'お土産', floor: 'B1F', x: 300, y: 300, name: '地下お土産売り場' },
 ];
 
 const CONGESTION_ZONES = [
@@ -174,32 +175,44 @@ const FOCUS_AREAS = [
 
 // --- コンポーネント (Components) ---
 
-// 初回許可確認モーダル
+// 初回許可確認モーダル (Update)
 const PermissionCheckScreen = ({ onAllow, onDeny }) => (
   <div className="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
-    <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mb-8 relative">
-      <div className="absolute w-full h-full bg-blue-500 rounded-full opacity-20 animate-ping"></div>
-      <MapIcon size={48} className="text-blue-600 relative z-10" />
+    <div className="flex gap-4 mb-8 relative">
+      <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center relative">
+        <div className="absolute w-full h-full bg-blue-500 rounded-full opacity-20 animate-ping"></div>
+        <MapIcon size={40} className="text-blue-600 relative z-10" />
+      </div>
+      <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center relative">
+        <div className="absolute w-full h-full bg-blue-500 rounded-full opacity-20 animate-ping delay-150"></div>
+        <Bluetooth size={40} className="text-blue-600 relative z-10" />
+      </div>
     </div>
 
     <h2 className="text-2xl font-bold text-gray-800 mb-4">
-      位置情報の利用について
+      位置情報とBluetoothの利用
     </h2>
 
-    <p className="text-gray-600 text-sm leading-relaxed mb-8 max-w-xs">
-      名古屋駅スマートコンシェルジュへようこそ！<br /><br />
-      お客様の現在地に合わせた<br />
-      <span className="font-bold text-blue-600">最適なルート案内</span>や<span className="font-bold text-orange-500">混雑状況</span>を<br />
-      お届けするために、位置情報の提供をお願いしております。<br />
-      <span className="text-xs text-gray-400 mt-2 block">※許可しない場合でも、個人情報が特定されることはありません。</span>
-    </p>
+    <div className="bg-gray-50 p-4 rounded-xl mb-6 max-w-xs text-left">
+      <p className="text-gray-600 text-sm leading-relaxed">
+        本アプリは<span className="font-bold">2034年の未来体験プロトタイプ</span>です。<br />
+        高精度なビーコンと位置情報技術を活用した、次世代の案内体験をシミュレーションします。
+      </p>
+    </div>
+
+    <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg mb-8 max-w-xs">
+      <p className="text-[11px] text-yellow-800 font-bold">
+        ※ これはデモ版です。<br />
+        お客様の実際の位置情報やBluetooth通信を利用・取得することは一切ありません。安心してお楽しみください。
+      </p>
+    </div>
 
     <div className="flex flex-col w-full max-w-xs gap-3">
       <button
         onClick={onAllow}
         className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg transition transform active:scale-95"
       >
-        許可して始める
+        許可して体験する (Simulation)
       </button>
       <button
         onClick={onDeny}
@@ -455,6 +468,7 @@ export default function App() {
 
   const planRefs = useRef({});
 
+  // Update: 現在地を「現在のステータス」の場所に合わせる
   const currentLocation = activePlan
     ? { x: currentFocusArea.x, y: currentFocusArea.y, floor: currentFocusArea.floor }
     : { x: currentFocusArea.x, y: currentFocusArea.y, floor: currentFocusArea.floor };
@@ -575,7 +589,7 @@ export default function App() {
     setFocusedPlanId(null);
     setActivePlan(plan);
     setActiveTab('map');
-    setCurrentFloor(currentFocusArea.floor);
+    setCurrentFloor(plan.steps[0].floor);
     setSelectedCategory(null);
     setSelectedPinId(null);
   };
@@ -839,7 +853,7 @@ export default function App() {
             </div>
 
             <div className="flex-1 overflow-auto p-4 relative bg-gray-100">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 relative overflow-hidden flex flex-col" style={{ minHeight: '600px' }}>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 relative overflow-hidden flex flex-col w-full aspect-[2/3]">
                 <svg viewBox="0 0 400 600" className="w-full h-full absolute top-0 left-0 z-0 bg-gray-50">
                   <defs>
                     <radialGradient id="congestionGradientOrange" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
