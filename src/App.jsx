@@ -35,12 +35,13 @@ import {
   MessageSquare,
   Send,
   Bot,
-  RefreshCw
+  RefreshCw,
+  MapPin as MapIcon // 追加
 } from 'lucide-react';
 
 /**
  * 名古屋駅スマートコンシェルジュ (Nagoya Station Smart Concierge)
- * Update: マップピン位置の微調整 & 注記の追加
+ * Update: 初回アクセス時の位置情報許可フロー & 丁寧な離脱画面の実装
  */
 
 // --- 定数データ (Data) ---
@@ -140,41 +141,31 @@ const SMART_SERVICES = [
 const MAP_WIDTH = 400;
 const MAP_HEIGHT = 600;
 
-// Update: ピン位置の修正（建物・エリアの中心に来るように調整）
 const MAP_PINS = [
   // 1F
-  { id: 1, category: 'ランチ', floor: '1F', x: 70, y: 520, name: 'うまいもん通り(太閤)' }, // 左下エリア内
-  { id: 2, category: 'カフェ', floor: '1F', x: 300, y: 180, name: 'カフェ・ド・クリエ' }, // 右側エリア内へ移動
-  { id: 3, category: 'お土産', floor: '1F', x: 280, y: 280, name: 'ギフトキヨスク' }, // 右側エリア内
-  { id: 4, category: '案内所', floor: '1F', x: 200, y: 280, name: '総合案内所' }, // 中央コンコース上
-  { id: 9, category: '待ち合わせ', floor: '1F', x: 200, y: 70, name: '金の時計' }, // 桜通口エリア中心
-  { id: 10, category: '待ち合わせ', floor: '1F', x: 200, y: 530, name: '銀の時計' }, // 太閤通口エリア中心
+  { id: 1, category: 'ランチ', floor: '1F', x: 70, y: 520, name: 'うまいもん通り(太閤)' },
+  { id: 2, category: 'カフェ', floor: '1F', x: 320, y: 150, name: 'カフェ・ド・クリエ' },
+  { id: 3, category: 'お土産', floor: '1F', x: 280, y: 300, name: 'ギフトキヨスク' },
+  { id: 4, category: '案内所', floor: '1F', x: 200, y: 280, name: '総合案内所' },
+  { id: 9, category: '待ち合わせ', floor: '1F', x: 200, y: 80, name: '金の時計' },
+  { id: 10, category: '待ち合わせ', floor: '1F', x: 200, y: 520, name: '銀の時計' },
 
   // 2F
-  { id: 5, category: 'カフェ', floor: '2F', x: 320, y: 220, name: 'タカシマヤ カフェ' }, // 右側エリア内
-  { id: 6, category: 'ランチ', floor: '2F', x: 80, y: 390, name: 'レストラン街' }, // 左側エリア付近
+  { id: 5, category: 'カフェ', floor: '2F', x: 300, y: 200, name: 'タカシマヤ カフェ' },
+  { id: 6, category: 'ランチ', floor: '2F', x: 100, y: 400, name: 'レストラン街' },
 
   // B1F
-  { id: 7, category: 'ランチ', floor: 'B1F', x: 70, y: 520, name: 'エスカ地下街' }, // 太閤通口側地下
-  { id: 8, category: 'お土産', floor: 'B1F', x: 320, y: 300, name: '地下お土産売り場' }, // 高島屋地下
+  { id: 7, category: 'ランチ', floor: 'B1F', x: 100, y: 450, name: 'エスカ地下街' },
+  { id: 8, category: 'お土産', floor: 'B1F', x: 250, y: 150, name: '地下お土産売り場' },
 ];
 
-// 混雑エリアの定義
 const CONGESTION_ZONES = [
-  // 1F: 中央口付近 (混雑: オレンジ) -> Index 0
   { x: 140, y: 230, r: 80, intensity: 0.6, floor: '1F', type: 'orange' },
-
-  // 1F: 太閤通口付近/新幹線改札前 (やや混雑: 黄色) -> Index 1
   { x: 200, y: 500, r: 90, intensity: 0.6, floor: '1F', type: 'yellow' },
-
-  // 2F: 桜通口 (混雑: オレンジ) -> Index 2
   { x: 200, y: 60, r: 90, intensity: 0.7, floor: '2F', type: 'orange' },
-
-  // B1F: タカシマヤ (混雑: オレンジ) -> Index 3
   { x: 320, y: 300, r: 100, intensity: 0.8, floor: 'B1F', type: 'orange' },
 ];
 
-// 注目エリアの定義
 const FOCUS_AREAS = [
   { id: 'central', name: '中央口付近', relatedPlanId: 1, congestionIndex: 0, x: 200, y: 280, floor: '1F' },
   { id: 'shinkansen', name: '新幹線改札前', relatedPlanId: 2, congestionIndex: 1, x: 80, y: 390, floor: '1F' },
@@ -182,6 +173,74 @@ const FOCUS_AREAS = [
 ];
 
 // --- コンポーネント (Components) ---
+
+// 初回許可確認モーダル
+const PermissionCheckScreen = ({ onAllow, onDeny }) => (
+  <div className="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
+    <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mb-8 relative">
+      <div className="absolute w-full h-full bg-blue-500 rounded-full opacity-20 animate-ping"></div>
+      <MapIcon size={48} className="text-blue-600 relative z-10" />
+    </div>
+
+    <h2 className="text-2xl font-bold text-gray-800 mb-4">
+      位置情報の利用について
+    </h2>
+
+    <p className="text-gray-600 text-sm leading-relaxed mb-8 max-w-xs">
+      名古屋駅スマートコンシェルジュへようこそ！<br /><br />
+      お客様の現在地に合わせた<br />
+      <span className="font-bold text-blue-600">最適なルート案内</span>や<span className="font-bold text-orange-500">混雑状況</span>を<br />
+      お届けするために、位置情報の提供をお願いしております。<br />
+      <span className="text-xs text-gray-400 mt-2 block">※許可しない場合でも、個人情報が特定されることはありません。</span>
+    </p>
+
+    <div className="flex flex-col w-full max-w-xs gap-3">
+      <button
+        onClick={onAllow}
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg transition transform active:scale-95"
+      >
+        許可して始める
+      </button>
+      <button
+        onClick={onDeny}
+        className="w-full bg-white border border-gray-200 text-gray-400 font-bold py-4 rounded-2xl hover:bg-gray-50 transition"
+      >
+        許可しない
+      </button>
+    </div>
+  </div>
+);
+
+// 終了画面
+const GoodbyeScreen = () => (
+  <div className="fixed inset-0 z-[100] bg-gradient-to-br from-blue-50 to-white flex flex-col items-center justify-center p-6 text-center animate-in zoom-in-95 duration-500">
+    <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-6">
+      <Star size={40} className="text-gray-400" />
+    </div>
+
+    <h2 className="text-xl font-bold text-gray-700 mb-4">
+      ご利用ありがとうございました
+    </h2>
+
+    <p className="text-gray-500 text-sm leading-relaxed mb-8 max-w-xs">
+      位置情報のご提供が見送られたため、<br />
+      本サービスの提供を終了いたします。<br /><br />
+      プライバシーを重視されるお気持ち、<br />
+      十分に理解いたします。<br /><br />
+      もし気が向かれましたら、<br />
+      またいつでもアクセスしてくださいね。<br /><br />
+      <span className="font-bold text-blue-600">素敵な名古屋での時間をお過ごしください！</span>
+    </p>
+
+    <button
+      onClick={() => window.location.reload()}
+      className="text-blue-500 text-xs font-bold underline flex items-center gap-1"
+    >
+      <RefreshCw size={12} />
+      もう一度最初からやり直す
+    </button>
+  </div>
+);
 
 // ChatBot UI
 const ChatBotModal = ({ isOpen, onClose, initialQuery }) => {
@@ -242,69 +301,26 @@ const ChatBotModal = ({ isOpen, onClose, initialQuery }) => {
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className="bg-white w-full max-w-md h-[80vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-        {/* Header */}
         <div className="bg-blue-600 p-4 flex justify-between items-center text-white shadow-md z-10">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-              <Bot size={20} />
-            </div>
-            <div>
-              <h3 className="font-bold text-sm">名駅AIコンシェルジュ</h3>
-              <p className="text-[10px] text-blue-100 flex items-center gap-1">
-                <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-                駅情報データベース接続中
-              </p>
-            </div>
+            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center"><Bot size={20} /></div>
+            <div><h3 className="font-bold text-sm">名駅AIコンシェルジュ</h3><p className="text-[10px] text-blue-100 flex items-center gap-1"><span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>駅情報データベース接続中</p></div>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-full transition-colors">
-            <X size={20} />
-          </button>
+          <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-full transition-colors"><X size={20} /></button>
         </div>
-
-        {/* Chat Area */}
         <div className="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-4">
           {messages.map((msg) => (
             <div key={msg.id} className={`flex ${msg.isBot ? 'justify-start' : 'justify-end'}`}>
-              <div className={`max-w-[80%] p-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm ${msg.isBot
-                  ? 'bg-white text-gray-800 rounded-tl-none border border-gray-100'
-                  : 'bg-blue-600 text-white rounded-tr-none'
-                }`}>
-                {msg.text}
-              </div>
+              <div className={`max-w-[80%] p-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm ${msg.isBot ? 'bg-white text-gray-800 rounded-tl-none border border-gray-100' : 'bg-blue-600 text-white rounded-tr-none'}`}>{msg.text}</div>
             </div>
           ))}
-          {isTyping && (
-            <div className="flex justify-start">
-              <div className="bg-white p-3 rounded-2xl rounded-tl-none border border-gray-100 shadow-sm flex gap-1">
-                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
-                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150"></span>
-                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-300"></span>
-              </div>
-            </div>
-          )}
+          {isTyping && <div className="flex justify-start"><div className="bg-white p-3 rounded-2xl rounded-tl-none border border-gray-100 shadow-sm flex gap-1"><span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span><span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150"></span><span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-300"></span></div></div>}
           <div ref={messagesEndRef} />
         </div>
-
-        {/* Input Area */}
         <div className="p-3 bg-white border-t border-gray-100">
-          <form
-            onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-            className="flex gap-2 items-center"
-          >
-            <input
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder="質問を入力してください..."
-              className="flex-1 bg-gray-100 border-none rounded-full px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            />
-            <button
-              type="submit"
-              disabled={!inputText.trim() || isTyping}
-              className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors shadow-sm"
-            >
-              <Send size={18} className={inputText.trim() ? 'ml-0.5' : ''} />
-            </button>
+          <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="flex gap-2 items-center">
+            <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="質問を入力してください..." className="flex-1 bg-gray-100 border-none rounded-full px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+            <button type="submit" disabled={!inputText.trim() || isTyping} className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors shadow-sm"><Send size={18} className={inputText.trim() ? 'ml-0.5' : ''} /></button>
           </form>
         </div>
       </div>
@@ -314,37 +330,22 @@ const ChatBotModal = ({ isOpen, onClose, initialQuery }) => {
 
 // サイドメニュー項目
 const MenuItem = ({ icon, label, onClick }) => (
-  <button
-    onClick={onClick}
-    className="w-full flex items-center gap-3 p-3 text-gray-600 hover:bg-gray-50 hover:text-blue-600 rounded-xl transition-colors font-medium text-sm"
-  >
-    {icon}
-    {label}
+  <button onClick={onClick} className="w-full flex items-center gap-3 p-3 text-gray-600 hover:bg-gray-50 hover:text-blue-600 rounded-xl transition-colors font-medium text-sm">
+    {icon}{label}
   </button>
 );
 
 // サイドメニュー本体
 const SideMenu = ({ isOpen, onClose, onShowPopularSpots, onShowSavedCoupons, onShowHistory }) => {
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 z-[60] flex justify-end">
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity animate-in fade-in duration-200"
-        onClick={onClose}
-      ></div>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity animate-in fade-in duration-200" onClick={onClose}></div>
       <div className="relative w-3/4 max-w-xs h-full bg-white shadow-2xl p-6 flex flex-col animate-in slide-in-from-right duration-300">
-        <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200">
-          <X size={20} />
-        </button>
+        <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200"><X size={20} /></button>
         <div className="flex items-center gap-3 mb-8 mt-4 pb-6 border-b border-gray-100">
-          <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 ring-4 ring-blue-50">
-            <User size={24} />
-          </div>
-          <div>
-            <p className="font-bold text-gray-800">ゲスト 様</p>
-            <p className="text-xs text-blue-500 font-bold cursor-pointer">マイページを表示</p>
-          </div>
+          <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 ring-4 ring-blue-50"><User size={24} /></div>
+          <div><p className="font-bold text-gray-800">ゲスト 様</p><p className="text-xs text-blue-500 font-bold cursor-pointer">マイページを表示</p></div>
         </div>
         <div className="space-y-1 flex-1 overflow-y-auto">
           <p className="text-xs font-bold text-gray-400 mb-2 px-3">メインメニュー</p>
@@ -357,10 +358,7 @@ const SideMenu = ({ isOpen, onClose, onShowPopularSpots, onShowSavedCoupons, onS
           <MenuItem icon={<HelpCircle size={18} />} label="ヘルプ・よくある質問" onClick={onClose} />
           <MenuItem icon={<FileText size={18} />} label="利用規約・ポリシー" onClick={onClose} />
         </div>
-        <button className="flex items-center gap-3 text-red-500 font-bold p-3 hover:bg-red-50 rounded-xl transition-colors mt-4 text-sm">
-          <LogOut size={18} />
-          ログアウト
-        </button>
+        <button className="flex items-center gap-3 text-red-500 font-bold p-3 hover:bg-red-50 rounded-xl transition-colors mt-4 text-sm"><LogOut size={18} />ログアウト</button>
       </div>
     </div>
   );
@@ -386,29 +384,14 @@ const ListModal = ({ title, items, onClose, type, onRemove, onNavigate }) => (
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
                   <h4 className="font-bold text-gray-800 text-sm truncate">{type === 'history' ? item.title : item.name}</h4>
-                  {type === 'coupon' && (
-                    <button onClick={() => onRemove(item.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>
-                  )}
+                  {type === 'coupon' && <button onClick={() => onRemove(item.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>}
                 </div>
                 {type === 'coupon' && <p className="text-orange-500 font-bold text-xs">{item.discount}</p>}
                 {type === 'history' && <p className="text-xs text-gray-500 mt-1"><Clock size={10} className="inline mr-1" />{item.duration}</p>}
                 {type !== 'history' && <p className="text-xs text-gray-500 mt-1 leading-snug line-clamp-2">{item.description}</p>}
-                {type === 'spot' && (
-                  <button onClick={() => window.open(item.link, '_blank')} className="mt-2 text-[10px] bg-blue-100 text-blue-600 px-2 py-1 rounded flex items-center gap-1 w-fit hover:bg-blue-200 transition">
-                    公式サイトを見る <ExternalLink size={10} />
-                  </button>
-                )}
-                {type === 'coupon' && (
-                  <button className="mt-2 bg-gray-800 text-white text-[10px] px-3 py-1 rounded-full hover:bg-gray-600 transition">今すぐ利用する</button>
-                )}
-                {type === 'history' && (
-                  <button
-                    onClick={() => onNavigate(item.id)}
-                    className="mt-2 bg-blue-600 text-white text-[10px] px-3 py-1 rounded-full hover:bg-blue-700 transition flex items-center gap-1 w-fit"
-                  >
-                    プランに移動 <ArrowRight size={10} />
-                  </button>
-                )}
+                {type === 'spot' && <button onClick={() => window.open(item.link, '_blank')} className="mt-2 text-[10px] bg-blue-100 text-blue-600 px-2 py-1 rounded flex items-center gap-1 w-fit hover:bg-blue-200 transition">公式サイトを見る <ExternalLink size={10} /></button>}
+                {type === 'coupon' && <button className="mt-2 bg-gray-800 text-white text-[10px] px-3 py-1 rounded-full hover:bg-gray-600 transition">今すぐ利用する</button>}
+                {type === 'history' && <button onClick={() => onNavigate(item.id)} className="mt-2 bg-blue-600 text-white text-[10px] px-3 py-1 rounded-full hover:bg-blue-700 transition flex items-center gap-1 w-fit">プランに移動 <ArrowRight size={10} /></button>}
               </div>
             </div>
           ))
@@ -443,6 +426,8 @@ const BeaconPopup = ({ coupon, onClose, onSave }) => (
 );
 
 export default function App() {
+  const [appMode, setAppMode] = useState('init'); // 'init', 'active', 'exit'
+
   const [activeTab, setActiveTab] = useState('home');
   const [showBeaconDemo, setShowBeaconDemo] = useState(false);
   const [currentFloor, setCurrentFloor] = useState('1F');
@@ -559,18 +544,6 @@ export default function App() {
 
   const handleRemoveCoupon = (id) => setSavedCoupons(savedCoupons.filter(c => c.id !== id));
 
-  const handleSearch = (e) => {
-    if (e.key === 'Enter' && searchQuery.trim()) {
-      if (searchQuery.length > 50) {
-        alert('検索ワードが長すぎます。50文字以内で入力してください。');
-        return;
-      }
-      setInitialChatQuery(searchQuery);
-      setIsChatOpen(true);
-      setSearchQuery('');
-    }
-  };
-
   const executeSearch = () => {
     if (searchQuery.trim()) {
       if (searchQuery.length > 50) {
@@ -663,6 +636,16 @@ export default function App() {
     top: `${(y / MAP_HEIGHT) * 100}%`
   });
 
+  // モード分岐
+  if (appMode === 'init') {
+    return <PermissionCheckScreen onAllow={() => setAppMode('active')} onDeny={() => setAppMode('exit')} />;
+  }
+
+  if (appMode === 'exit') {
+    return <GoodbyeScreen />;
+  }
+
+  // Active Mode (Main App)
   const renderContent = () => {
     switch (activeTab) {
       case 'home':
